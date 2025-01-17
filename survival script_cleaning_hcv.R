@@ -96,12 +96,127 @@ romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
 romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
   mutate(days_risk = appointment_dte_lag-appointment_dte)
 
+
+# change test results to 0 and 1
+romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
+  mutate(hcv_test_rslt_lag = case_when(
+    hcv_test_rslt_lag == 1 ~ 0,
+    hcv_test_rslt_lag == 2 ~ 1,
+    TRUE ~ hcv_test_rslt_lag
+  ))
+romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
+  mutate(hcv_test_rslt = case_when(
+    hcv_test_rslt == 1 ~ 0,
+    hcv_test_rslt == 2 ~ 1,
+    TRUE ~ hcv_test_rslt
+  ))
+
+# rename hcv variables
+romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
+  rename(
+    hcv_baseline = hcv_test_rslt,
+    hcv_test_rslt = hcv_test_rslt_lag
+  )
+
+#### bootstrap approach ###
+
+# number of bootstrap iterations
+n_iterations <- 10
+
+# store incidence rates for each iteration
+incidence_rates <- numeric(n_iterations)
+
+# Bootstrap loop
+for (i in 1:n_iterations) {
+  # Resample the dataset with replacement
+  bootstrap_sample <- romania_pwid_hcv_test %>%
+    sample_n(nrow(romania_pwid_hcv_test), replace = TRUE) %>%
+    rowwise() %>%
+    mutate(
+      condition_met = hcv_test_rslt == 1,
+      random_infection_date = if (condition_met) {
+        as.Date(runif(1, as.numeric(appointment_dte), as.numeric(appointment_dte_lag)), origin = "1970-01-01")
+      } else {
+        NA
+      },
+      
+      # calculate days at risk based on random infection date
+      days_risk = if (condition_met) {
+        as.numeric(random_infection_date - appointment_dte)
+      } else {
+        as.numeric(appointment_dte_lag - appointment_dte)
+      }
+    ) %>%
+    ungroup()
+  
+  # calculate total days and cases for the bootstrap sample
+  total_days_hcv <- sum(bootstrap_sample$days_risk)
+  total_cases <- sum(bootstrap_sample$hcv_test_rslt)
+  
+  # calculate incidence rate for this iteration
+  incidence_rate <- (total_cases / total_days_hcv) * 365.25 * 100
+  incidence_rates[i] <- incidence_rate
+}
+
+# calculate the average incidence rate
+mean_incidence_rate <- mean(incidence_rates)
+
+# calculate the 95% uncertainty interval (2.5th and 97.5th percentiles)
+incidence_rate_95ci <- quantile(incidence_rates, c(0.025, 0.975))
+
+# results
+cat("Average incidence rate of HCV per 100 person years:", mean_incidence_rate, "\n")
+cat("95% Uncertainty Interval (2.5th and 97.5th percentiles):", incidence_rate_95ci, "\n")
+
+#### random-point sampling with 1000 iterations approach ####
+
+# generate random infection dates
+romania_pwid_hcv_test_iterations <- romania_pwid_hcv_test %>%
+  filter(hcv_test_rslt == 1) %>%  
+  rowwise() %>%
+  mutate(
+    # generate 1000 random infection dates
+    random_infection_dtes = list(
+      as.Date(
+        pmax(
+          pmin(
+            rnorm(1000, 
+                  mean = as.numeric(appointment_dte) + (as.numeric(appointment_dte_lag) - as.numeric(appointment_dte)) / 2,
+                  sd = (as.numeric(appointment_dte_lag) - as.numeric(appointment_dte)) / 4),
+            as.numeric(appointment_dte_lag) 
+          ),
+          as.numeric(appointment_dte)  
+        ),
+        origin = "1970-01-01"
+      )
+    )
+  ) %>%
+  unnest_longer(random_infection_dtes) %>%  
+  mutate(
+    iteration = row_number(),  
+    days_risk = as.numeric(random_infection_dtes - appointment_dte),  # days at risk
+    person_years = days_risk / 365.25  # convert days at risk to person-years
+  ) %>%
+  ungroup()
+
+# Calculate total person-years and total cases
+total_person_years <- sum(romania_pwid_hcv_test_iterations$person_years, na.rm = TRUE)
+total_cases <- n_distinct(romania_pwid_hcv_test_iterations$iteration)
+
+# Calculate incidence rate (per 100 person-years)
+incidence_rate <- (total_cases / total_person_years) * 100
+
+# Poisson 95% confidence intervals
+lower_bound <- (qpois(0.025, total_cases) / total_person_years) * 100
+upper_bound <- (qpois(0.975, total_cases) / total_person_years) * 100
+
+# Print results
+cat("Incidence Rate (per 100 person-years):", incidence_rate, "\n")
+cat("95% Confidence Interval:", lower_bound, "-", upper_bound, "\n")
 #romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
 #  mutate(days_risk = ifelse(hcv_test_rslt_lag == 2, days_risk / 2, days_risk))
 
-# time of infection
-
-set.seed(123) # Setting a seed for reproducibility
+#### previous code ####
 
 romania_pwid_hcv_test_rand <- romania_pwid_hcv_test %>%
   mutate(
