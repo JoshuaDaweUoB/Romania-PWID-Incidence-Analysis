@@ -7,8 +7,6 @@ setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/
 ## load data
 romania_pwid_raw <- read_excel("ARAS DATA IDU 2013-2022.xlsx") 
 
-# test 
-
 ## baseline HCV cohort
 
 # remove rows where hiv test result is missing
