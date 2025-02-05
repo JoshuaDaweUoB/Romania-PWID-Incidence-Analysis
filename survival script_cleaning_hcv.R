@@ -178,15 +178,9 @@ romania_pwid_hcv_test_iterations <- romania_pwid_hcv_test %>%
     # generate 1000 random infection dates
     random_infection_dtes = list(
       as.Date(
-        pmax(
-          pmin(
-            rnorm(1000, 
-                  mean = as.numeric(appointment_dte) + (as.numeric(appointment_dte_lag) - as.numeric(appointment_dte)) / 2,
-                  sd = (as.numeric(appointment_dte_lag) - as.numeric(appointment_dte)) / 4),
-            as.numeric(appointment_dte_lag) 
-          ),
-          as.numeric(appointment_dte)  
-        ),
+        runif(1000, 
+              min = as.numeric(appointment_dte), 
+              max = as.numeric(appointment_dte_lag)),
         origin = "1970-01-01"
       )
     )
