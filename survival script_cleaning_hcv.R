@@ -1,5 +1,5 @@
 ## load packages
-pacman::p_load(dplyr, tidyr, withr, lubridate, writexl, readxl)
+pacman::p_load(dplyr, tidyr, withr, lubridate, MASS, writexl, readxl, arsenal, survival)
 
 ## set wd
 setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/Romania PWID/data")
@@ -117,6 +117,11 @@ romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
     hcv_test_rslt = hcv_test_rslt_lag
   )
 
+# QA for rows where appointment_dte_lag is less than appointment_dte
+invalid_rows <- romania_pwid_hcv_test %>%
+  filter(appointment_dte_lag < appointment_dte)
+cat("Number of rows where appointment_dte_lag is less than appointment_dte:", nrow(invalid_rows), "\n")
+
 #### random-point sampling with 1000 iterations approach ####
 
 # generate random infection dates
@@ -143,6 +148,11 @@ romania_pwid_hcv_test_iterations <- romania_pwid_hcv_test %>%
   ) %>%
   ungroup()
 
+# check for rows where appointment_dte_lag is less than appointment_dte
+invalid_rows <- romania_pwid_hcv_test_iterations %>%
+  filter(appointment_dte_lag < appointment_dte)
+cat("Number of rows where appointment_dte_lag is less than appointment_dte:", nrow(invalid_rows), "\n")
+
 # split each iteration into a separate dataframe
 split_dataframes <- split(romania_pwid_hcv_test_iterations, romania_pwid_hcv_test_iterations$iteration)
 
@@ -162,6 +172,11 @@ romania_pwid_hcv_test_negatives <- romania_pwid_hcv_test %>%
     person_years = days_risk / 365.25
   )
 
+# QA for rows where appointment_dte_lag is less than appointment_dte
+invalid_rows <- romania_pwid_hcv_test_negatives %>%
+  filter(appointment_dte_lag < appointment_dte)
+cat("Number of rows where appointment_dte_lag is less than appointment_dte:", nrow(invalid_rows), "\n")
+
 # append the negatives dataframe to each of the 1000 dataframes
 split_dataframes <- lapply(split_dataframes, function(df) {
   combined_df <- rbind(df, romania_pwid_hcv_test_negatives)
@@ -170,6 +185,67 @@ split_dataframes <- lapply(split_dataframes, function(df) {
 
 # name each dataframe in the list
 names(split_dataframes) <- paste0("iteration_", seq_along(split_dataframes))
+
+# view the first and last dataframe for QA
+View(split_dataframes[["iteration_1"]])
+View(split_dataframes[["iteration_1000"]])
+
+
+# Function to calculate person-years for each year of observation
+calculate_person_years <- function(df) {
+  df %>%
+    rowwise() %>%
+    mutate(
+      start_year = year(appointment_dte),
+      end_year = year(appointment_dte_lag),
+      start_date = appointment_dte,
+      end_date = appointment_dte_lag
+    ) %>%
+    do({
+      data <- .
+      years <- seq(data$start_year, data$end_year)
+      person_years <- sapply(years, function(year) {
+        start <- max(as.Date(paste0(year, "-01-01")), data$start_date)
+        end <- min(as.Date(paste0(year, "-12-31")), data$end_date)
+        as.numeric(difftime(end, start, units = "days")) / 365.25
+      })
+      names(person_years) <- years
+      data.frame(t(person_years))
+    }) %>%
+    ungroup()
+}
+
+# Apply the function to each iteration
+person_years_list <- lapply(split_dataframes, calculate_person_years)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# convert time variables to numeric for all iterations
+split_dataframes <- lapply(split_dataframes, function(df) {
+  df <- df %>%
+    mutate(
+      appointment_dte = as.numeric(appointment_dte),
+      appointment_dte_lag = as.numeric(appointment_dte_lag),
+      random_infection_dtes = as.numeric(random_infection_dtes)
+    )
+  return(df)
+})
+
+
 
 # view the first and last dataframe for QA
 View(split_dataframes[["iteration_1"]])
@@ -200,6 +276,24 @@ median_incidence_rate <- median(results_df$incidence_rate, na.rm = TRUE)
 lower_bound <- quantile(results_df$incidence_rate, 0.025, na.rm = TRUE)
 upper_bound <- quantile(results_df$incidence_rate, 0.975, na.rm = TRUE)
 
+# Summarize the model results
+summary(romania_pwid_year)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # add the uncertainty interval to the results dataframe
 results_df <- results_df %>%
   mutate(
@@ -215,3 +309,32 @@ View(results_df)
 # print the uncertainty interval
 cat("Median Incidence Rate (per 100 person-years):", median_incidence_rate, "\n")
 cat("95% Uncertainty Interval:", lower_bound, "-", upper_bound, "\n")
+
+
+
+# Combine all iterations into a single dataframe
+combined_df <- bind_rows(split_dataframes)
+
+# Ensure the necessary columns are present
+combined_df <- combined_df %>%
+  filter(!is.na(midpoint_year)) %>%
+  mutate(
+    hcv_test_rslt = as.numeric(hcv_test_rslt == 1)  # Convert to binary outcome
+  )
+
+# Fit the generalized linear model with a negative binomial distribution
+model <- glm.nb(hcv_test_rslt ~ midpoint_year + offset(log(person_years)), data = combined_df)
+
+# Summarize the model results
+summary(model)
+
+# Print the model coefficients
+cat("Model Coefficients:\n")
+print(coef(model))
+
+# Calculate the incidence rate ratio (IRR) and 95% confidence intervals
+exp_coef <- exp(coef(model))
+conf_int <- exp(confint(model))
+
+cat("Incidence Rate Ratio (IRR) and 95% Confidence Intervals:\n")
+print(data.frame(IRR = exp_coef, Lower_CI = conf_int[, 1], Upper_CI = conf_int[, 2]))
