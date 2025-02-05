@@ -144,7 +144,9 @@ romania_pwid_hcv_test_iterations <- romania_pwid_hcv_test %>%
   mutate(
     iteration = rep(1:1000, each = n() / 1000),  # create iteration groups
     days_risk = as.numeric(random_infection_dtes - appointment_dte),  # days at risk
-    person_years = days_risk / 365.25  # convert days at risk to person-years
+    person_years = days_risk / 365.25,  # convert days at risk to person-years
+    midpoint_year = year(random_infection_dtes),  # extract the year from random_infection_dtes
+    appointment_dte_lag = random_infection_dtes  # set appointment_dte_lag to random_infection_dtes
   ) %>%
   ungroup()
 
@@ -158,10 +160,6 @@ split_dataframes <- split(romania_pwid_hcv_test_iterations, romania_pwid_hcv_tes
 
 # name each dataframe in the list
 names(split_dataframes) <- paste0("iteration_", seq_along(split_dataframes))
-
-# view the first and last dataframe for QA 
-View(split_dataframes[["iteration_1"]])
-View(split_dataframes[["iteration_1000"]])
 
 # create dataframe of negatives
 romania_pwid_hcv_test_negatives <- romania_pwid_hcv_test %>%
@@ -177,8 +175,23 @@ invalid_rows <- romania_pwid_hcv_test_negatives %>%
   filter(appointment_dte_lag < appointment_dte)
 cat("Number of rows where appointment_dte_lag is less than appointment_dte:", nrow(invalid_rows), "\n")
 
+# append the negatives dataframe to each of the 1000 dataframes
+split_dataframes <- lapply(split_dataframes, function(df) {
+  combined_df <- rbind(df, romania_pwid_hcv_test_negatives)
+  return(combined_df)
+})
+
+# view the first and last dataframe for QA 
+View(split_dataframes[["iteration_1"]])
+View(split_dataframes[["iteration_1000"]])
+
 # Function to calculate person-years for each year of observation and add them to the dataframe
 calculate_and_add_person_years <- function(df) {
+  # Print the initial dataframe for debugging
+  cat("Initial dataframe:\n")
+  print(head(df))
+  
+  # Calculate person-years for each year of observation
   person_years_df <- df %>%
     rowwise() %>%
     mutate(
@@ -200,24 +213,32 @@ calculate_and_add_person_years <- function(df) {
     }) %>%
     ungroup()
   
+  # Print the person_years_df for debugging
+  cat("Person years dataframe:\n")
+  print(head(person_years_df))
+  
   # Merge the person_years_df with the original dataframe
   df <- bind_cols(df, person_years_df)
+  
+  # Create columns for each year and set the value to 1 if hcv_test_rslt equals 1
+  years <- unique(df$midpoint_year)
+  for (year in years) {
+    df <- df %>%
+      mutate(!!paste0("hcv_test_", year) := ifelse(midpoint_year == year & hcv_test_rslt == 1, 1, 0))
+  }
+  
+  # Print the final dataframe for debugging
+  cat("Final dataframe:\n")
+  print(head(df))
+  
   return(df)
 }
-
-# Append the negatives dataframe to each of the 1000 dataframes
-split_dataframes <- lapply(split_dataframes, function(df) {
-  combined_df <- rbind(df, romania_pwid_hcv_test_negatives)
-  return(combined_df)
-})
-
-# Name each dataframe in the list
-names(split_dataframes) <- paste0("iteration_", seq_along(split_dataframes))
 
 # Apply the function to each iteration and add the year columns to the dataframes
 split_dataframes <- lapply(seq_along(split_dataframes), function(i) {
   cat("Processing iteration", i, "of", length(split_dataframes), "\n")
   split_dataframes[[i]] <- calculate_and_add_person_years(split_dataframes[[i]])
+  return(split_dataframes[[i]])
 })
 
 # View the first dataframe for QA
@@ -237,6 +258,43 @@ View(split_dataframes[["iteration_1000"]])
 
 
 
+# Select the dataframe for iteration 1000
+df <- split_dataframes[["iteration_1000"]]
+
+# Calculate person-years for each year of observation and add them to the dataframe
+person_years_df <- df %>%
+  rowwise() %>%
+  mutate(
+    start_year = year(appointment_dte),
+    end_year = year(appointment_dte_lag),
+    start_date = appointment_dte,
+    end_date = appointment_dte_lag
+  ) %>%
+  do({
+    data <- .
+    years <- seq(data$start_year, data$end_year)
+    person_years <- sapply(years, function(year) {
+      start <- max(as.Date(paste0(year, "-01-01")), data$start_date)
+      end <- min(as.Date(paste0(year, "-12-31")), data$end_date)
+      as.numeric(difftime(end, start, units = "days")) / 365.25
+    })
+    names(person_years) <- years
+    data.frame(t(person_years))
+  }) %>%
+  ungroup()
+
+# Merge the person_years_df with the original dataframe
+df <- bind_cols(df, person_years_df)
+
+# Create columns for each year and set the value to 1 if hcv_test_rslt equals 1
+years <- unique(df$midpoint_year)
+for (year in years) {
+  df <- df %>%
+    mutate(!!paste0("hcv_test_", year) := ifelse(midpoint_year == year & hcv_test_rslt == 1, 1, 0))
+}
+
+# View the updated dataframe for QA
+View(df)
 
 
 
@@ -256,11 +314,28 @@ View(split_dataframes[["iteration_1000"]])
 
 
 
-# append the negatives dataframe to each of the 1000 dataframes
-split_dataframes <- lapply(split_dataframes, function(df) {
-  combined_df <- rbind(df, romania_pwid_hcv_test_negatives)
-  return(combined_df)
-})
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # name each dataframe in the list
 names(split_dataframes) <- paste0("iteration_", seq_along(split_dataframes))
