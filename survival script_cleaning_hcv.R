@@ -177,23 +177,9 @@ invalid_rows <- romania_pwid_hcv_test_negatives %>%
   filter(appointment_dte_lag < appointment_dte)
 cat("Number of rows where appointment_dte_lag is less than appointment_dte:", nrow(invalid_rows), "\n")
 
-# append the negatives dataframe to each of the 1000 dataframes
-split_dataframes <- lapply(split_dataframes, function(df) {
-  combined_df <- rbind(df, romania_pwid_hcv_test_negatives)
-  return(combined_df)
-})
-
-# name each dataframe in the list
-names(split_dataframes) <- paste0("iteration_", seq_along(split_dataframes))
-
-# view the first and last dataframe for QA
-View(split_dataframes[["iteration_1"]])
-View(split_dataframes[["iteration_1000"]])
-
-
-# Function to calculate person-years for each year of observation
-calculate_person_years <- function(df) {
-  df %>%
+# Function to calculate person-years for each year of observation and add them to the dataframe
+calculate_and_add_person_years <- function(df) {
+  person_years_df <- df %>%
     rowwise() %>%
     mutate(
       start_year = year(appointment_dte),
@@ -213,11 +199,106 @@ calculate_person_years <- function(df) {
       data.frame(t(person_years))
     }) %>%
     ungroup()
+  
+  # Merge the person_years_df with the original dataframe
+  df <- bind_cols(df, person_years_df)
+  return(df)
 }
 
-# Apply the function to each iteration
-person_years_list <- lapply(split_dataframes, calculate_person_years)
+# Append the negatives dataframe to each of the 1000 dataframes
+split_dataframes <- lapply(split_dataframes, function(df) {
+  combined_df <- rbind(df, romania_pwid_hcv_test_negatives)
+  return(combined_df)
+})
 
+# Name each dataframe in the list
+names(split_dataframes) <- paste0("iteration_", seq_along(split_dataframes))
+
+# Apply the function to each iteration and add the year columns to the dataframes
+split_dataframes <- lapply(seq_along(split_dataframes), function(i) {
+  cat("Processing iteration", i, "of", length(split_dataframes), "\n")
+  split_dataframes[[i]] <- calculate_and_add_person_years(split_dataframes[[i]])
+})
+
+# View the first dataframe for QA
+View(split_dataframes[["iteration_1"]])
+
+# View the last dataframe for QA
+View(split_dataframes[["iteration_1000"]])
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# append the negatives dataframe to each of the 1000 dataframes
+split_dataframes <- lapply(split_dataframes, function(df) {
+  combined_df <- rbind(df, romania_pwid_hcv_test_negatives)
+  return(combined_df)
+})
+
+# name each dataframe in the list
+names(split_dataframes) <- paste0("iteration_", seq_along(split_dataframes))
+
+# view the first and last dataframe for QA
+View(split_dataframes[["iteration_1"]])
+View(split_dataframes[["iteration_1000"]])
+
+# Function to calculate person-years for each year of observation and add them to the dataframe
+calculate_and_add_person_years <- function(df) {
+  person_years_df <- df %>%
+    rowwise() %>%
+    mutate(
+      start_year = year(appointment_dte),
+      end_year = year(appointment_dte_lag),
+      start_date = appointment_dte,
+      end_date = appointment_dte_lag
+    ) %>%
+    do({
+      data <- .
+      years <- seq(data$start_year, data$end_year)
+      person_years <- sapply(years, function(year) {
+        start <- max(as.Date(paste0(year, "-01-01")), data$start_date)
+        end <- min(as.Date(paste0(year, "-12-31")), data$end_date)
+        as.numeric(difftime(end, start, units = "days")) / 365.25
+      })
+      names(person_years) <- years
+      data.frame(t(person_years))
+    }) %>%
+    ungroup()
+  
+  # Merge the person_years_df with the original dataframe
+  df <- bind_cols(df, person_years_df)
+  return(df)
+}
+
+
+View(split_dataframes[["iteration_1000"]])
 
 
 
