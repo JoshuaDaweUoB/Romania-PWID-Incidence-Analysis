@@ -183,41 +183,34 @@ for (i in seq_along(split_dataframes)) {
   df <- split_dataframes[[i]]
   total_person_years <- sum(df$person_years, na.rm = TRUE)
   total_cases <- sum(df$hcv_test_rslt == 1, na.rm = TRUE)
-  results_list[[i]] <- data.frame(
-    iteration = i,
-    total_cases = total_cases,
-    total_person_years = total_person_years
-  )
-}
-
-# calculate total person-years and total incident cases for each dataframe
-for (i in seq_along(split_dataframes)) {
-  df <- split_dataframes[[i]]
-  total_person_years <- sum(df$person_years, na.rm = TRUE)
-  total_cases <- sum(df$hcv_test_rslt == 1, na.rm = TRUE)
   incidence_rate <- (total_cases / total_person_years) * 100
-  lower_bound <- (qpois(0.025, total_cases) / total_person_years) * 100
-  upper_bound <- (qpois(0.975, total_cases) / total_person_years) * 100
   results_list[[i]] <- data.frame(
     iteration = i,
     total_cases = total_cases,
     total_person_years = total_person_years,
-    incidence_rate = incidence_rate,
-    lower_bound = lower_bound,
-    upper_bound = upper_bound
+    incidence_rate = incidence_rate
   )
 }
 
 # combine the results into a single dataframe
 results_df <- do.call(rbind, results_list)
 
-# view the results dataframe for QA
-View(results_df)
-
 # calculate the median, 2.5th percentile, and 97.5th percentile for the incidence rate
 median_incidence_rate <- median(results_df$incidence_rate, na.rm = TRUE)
 lower_bound <- quantile(results_df$incidence_rate, 0.025, na.rm = TRUE)
 upper_bound <- quantile(results_df$incidence_rate, 0.975, na.rm = TRUE)
+
+# add the uncertainty interval to the results dataframe
+results_df <- results_df %>%
+  mutate(
+    median_incidence_rate = median_incidence_rate,
+    lower_bound = lower_bound,
+    upper_bound = upper_bound
+  )
+
+# view the results dataframe for QA
+print(head(results_df))
+View(results_df)
 
 # print the uncertainty interval
 cat("Median Incidence Rate (per 100 person-years):", median_incidence_rate, "\n")
