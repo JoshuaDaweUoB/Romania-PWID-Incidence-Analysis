@@ -121,148 +121,104 @@ romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
 
 # generate random infection dates
 romania_pwid_hcv_test_iterations <- romania_pwid_hcv_test %>%
-  filter(hcv_test_rslt == 1) %>%  
+  filter(hcv_test_rslt == 1) %>%
   rowwise() %>%
   mutate(
     # generate 1000 random infection dates
     random_infection_dtes = list(
       as.Date(
-        runif(1000, 
-              min = as.numeric(appointment_dte), 
+        runif(1000,
+              min = as.numeric(appointment_dte),
               max = as.numeric(appointment_dte_lag)),
         origin = "1970-01-01"
       )
     )
   ) %>%
-  unnest_longer(random_infection_dtes) %>%  
+  unnest_longer(random_infection_dtes) %>%
+  group_by(id) %>%
   mutate(
-    iteration = row_number(),  
+    iteration = rep(1:1000, each = n() / 1000),  # create iteration groups
     days_risk = as.numeric(random_infection_dtes - appointment_dte),  # days at risk
     person_years = days_risk / 365.25  # convert days at risk to person-years
   ) %>%
   ungroup()
 
-# Calculate total person-years and total cases
-total_person_years <- sum(romania_pwid_hcv_test_iterations$person_years, na.rm = TRUE)
-total_cases <- n_distinct(romania_pwid_hcv_test_iterations$iteration)
+# split each iteration into a separate dataframe
+split_dataframes <- split(romania_pwid_hcv_test_iterations, romania_pwid_hcv_test_iterations$iteration)
 
-# Calculate incidence rate (per 100 person-years)
-incidence_rate <- (total_cases / total_person_years) * 100
+# name each dataframe in the list
+names(split_dataframes) <- paste0("iteration_", seq_along(split_dataframes))
 
-# Poisson 95% confidence intervals
-lower_bound <- (qpois(0.025, total_cases) / total_person_years) * 100
-upper_bound <- (qpois(0.975, total_cases) / total_person_years) * 100
+# view the first and last dataframe for QA 
+View(split_dataframes[["iteration_1"]])
+View(split_dataframes[["iteration_1000"]])
 
-# Print results
-cat("Incidence Rate (per 100 person-years):", incidence_rate, "\n")
-cat("95% Confidence Interval:", lower_bound, "-", upper_bound, "\n")
-#romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
-#  mutate(days_risk = ifelse(hcv_test_rslt_lag == 2, days_risk / 2, days_risk))
-
-#### previous code ####
-
-romania_pwid_hcv_test_rand <- romania_pwid_hcv_test %>%
+# create dataframe of negatives
+romania_pwid_hcv_test_negatives <- romania_pwid_hcv_test %>%
+  filter(hcv_test_rslt == 0) %>%
   mutate(
-    appointment_dte = as.Date(appointment_dte),
-    appointment_dte_lag = as.Date(appointment_dte_lag)
+    iteration = NA,
+    random_infection_dtes = NA,
+    person_years = days_risk / 365.25
   )
 
-# Update days_risk with random infection date logic
-romania_pwid_hcv_test_rand <- romania_pwid_hcv_test_rand %>%
-  rowwise() %>%
-  mutate(
-    # Debugging: Check if condition is met
-    condition_met = hcv_test_rslt == 1 & hcv_test_rslt_lag == 2,
-    
-    # Generate random infection date if condition is met
-    random_infection_date = if (condition_met) {
-      as.Date(runif(1, as.numeric(appointment_dte), as.numeric(appointment_dte_lag)), origin = "1970-01-01")
-    } else {
-      NA
-    },
-    
-    # Calculate days at risk based on random infection date
-    days_risk = if (condition_met) {
-      as.numeric(random_infection_date - appointment_dte)
-    } else {
-      as.numeric(appointment_dte_lag - appointment_dte)
-    }
-  ) %>%
-  ungroup()
+# append the negatives dataframe to each of the 1000 dataframes
+split_dataframes <- lapply(split_dataframes, function(df) {
+  combined_df <- rbind(df, romania_pwid_hcv_test_negatives)
+  return(combined_df)
+})
 
-# change test results to 0 and 1
-romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
-  mutate(hcv_test_rslt_lag = case_when(
-  hcv_test_rslt_lag == 1 ~ 0,
-  hcv_test_rslt_lag == 2 ~ 1,
-  TRUE ~ hcv_test_rslt_lag
-))
+# name each dataframe in the list
+names(split_dataframes) <- paste0("iteration_", seq_along(split_dataframes))
 
-# calculate midpoint year
-romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
-  mutate(midpoint_year = appointment_dte_lag + (appointment_dte - appointment_dte_lag) / 2) %>%
-  mutate(midpoint_year = year(midpoint_year))
+# view the first and last dataframe for QA
+View(split_dataframes[["iteration_1"]])
+View(split_dataframes[["iteration_1000"]])
 
-# rename hcv_test_rslt_lag
-romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
-  select(-hcv_test_rslt) %>%
-  rename(hcv_test_rslt = hcv_test_rslt_lag)
+# initialize a list to store the results
+results_list <- vector("list", length(split_dataframes))
 
-# save testing data
-write_xlsx(romania_pwid_hcv_test,"hcv_test_data.xlsx")
+# calculate total person-years and total incident cases for each dataframe
+for (i in seq_along(split_dataframes)) {
+  df <- split_dataframes[[i]]
+  total_person_years <- sum(df$person_years, na.rm = TRUE)
+  total_cases <- sum(df$hcv_test_rslt == 1, na.rm = TRUE)
+  results_list[[i]] <- data.frame(
+    iteration = i,
+    total_cases = total_cases,
+    total_person_years = total_person_years
+  )
+}
 
-## exposure data
+# calculate total person-years and total incident cases for each dataframe
+for (i in seq_along(split_dataframes)) {
+  df <- split_dataframes[[i]]
+  total_person_years <- sum(df$person_years, na.rm = TRUE)
+  total_cases <- sum(df$hcv_test_rslt == 1, na.rm = TRUE)
+  incidence_rate <- (total_cases / total_person_years) * 100
+  lower_bound <- (qpois(0.025, total_cases) / total_person_years) * 100
+  upper_bound <- (qpois(0.975, total_cases) / total_person_years) * 100
+  results_list[[i]] <- data.frame(
+    iteration = i,
+    total_cases = total_cases,
+    total_person_years = total_person_years,
+    incidence_rate = incidence_rate,
+    lower_bound = lower_bound,
+    upper_bound = upper_bound
+  )
+}
 
-# keep columns of interest
-romania_pwid_hcv_exposure <- subset(romania_pwid_hcv, select = c(id, gender, dob, drug_type, sex_work_current, msm_current, homeless_current, ethnic_roma, hiv, pres_distributed, syringes_distributed_1ml, syringes_distributed_2ml, syringes_recovered)) 
+# combine the results into a single dataframe
+results_df <- do.call(rbind, results_list)
 
-# replace NA with 0
-romania_pwid_hcv_exposure <- romania_pwid_hcv_exposure %>%
-  mutate(across(c(sex_work_current, msm_current, homeless_current, ethnic_roma, hiv), ~ replace_na(., 0)))
+# view the results dataframe for QA
+View(results_df)
 
-# remove last row per id 
-romania_pwid_hcv_exposure <- romania_pwid_hcv_exposure %>%
-  arrange(id) %>%
-  group_by(id) %>%
-  slice(-n())  
+# calculate the median, 2.5th percentile, and 97.5th percentile for the incidence rate
+median_incidence_rate <- median(results_df$incidence_rate, na.rm = TRUE)
+lower_bound <- quantile(results_df$incidence_rate, 0.025, na.rm = TRUE)
+upper_bound <- quantile(results_df$incidence_rate, 0.975, na.rm = TRUE)
 
-# save exposure data
-write_xlsx(romania_pwid_hcv_exposure,"hcv_exposure_data.xlsx")
-
-# create analysis df
-
-# sequence by id for merge
-romania_pwid_hcv_exposure <- romania_pwid_hcv_exposure %>%
-  arrange(id) %>%
-  mutate(id_seq = row_number())
-
-romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
-  arrange(id) %>%
-  mutate(id_seq = row_number())
-
-# merge
-romania_pwid_hcv_analysis <- left_join(romania_pwid_hcv_exposure, romania_pwid_hcv_test, by = c("id", "id_seq"))
-
-# remove rows where days at risk is less than 30
-romania_pwid_hcv_analysis <- romania_pwid_hcv_analysis %>%
-  filter(!days_risk < 30)
-
-# remove rows where days at risk is greater than 730
-romania_pwid_hcv_analysis <- romania_pwid_hcv_analysis %>%
-  filter(!days_risk > 730)
-
-# make time variables numeric
-romania_pwid_hcv_analysis$days_risk <- as.numeric(romania_pwid_hcv_analysis$days_risk)
-romania_pwid_hcv_analysis$appointment_dte <- as.numeric(romania_pwid_hcv_analysis$appointment_dte)
-romania_pwid_hcv_analysis$appointment_dte_lag <- as.numeric(romania_pwid_hcv_analysis$appointment_dte_lag)
-
-# make exposure variables categorical
-romania_pwid_hcv_analysis$midpoint_year <- factor(romania_pwid_hcv_analysis$midpoint_year)
-
-# save data
-write_xlsx(romania_pwid_hcv_analysis,"hcv_data_analysis.xlsx")
-
-
-
-
-
+# print the uncertainty interval
+cat("Median Incidence Rate (per 100 person-years):", median_incidence_rate, "\n")
+cat("95% Uncertainty Interval:", lower_bound, "-", upper_bound, "\n")
