@@ -185,8 +185,16 @@ split_dataframes <- lapply(split_dataframes, function(df) {
 View(split_dataframes[["iteration_1"]])
 View(split_dataframes[["iteration_1000"]])
 
-# Function to calculate person-years for each year of observation and add them to the dataframe
-calculate_and_add_person_years <- function(df) {
+# Initialize an empty list to store the results
+processed_dataframes <- list()
+
+# Loop through the first 10 iterations
+for (i in 1:10) {
+  cat("Processing iteration", i, "of", 10, "\n")
+  
+  # Get the dataframe for the current iteration
+  df <- split_dataframes[[i]]
+  
   # Print the initial dataframe for debugging
   cat("Initial dataframe:\n")
   print(head(df))
@@ -217,6 +225,13 @@ calculate_and_add_person_years <- function(df) {
   cat("Person years dataframe:\n")
   print(head(person_years_df))
   
+  # Check if person_years_df is empty
+  if (nrow(person_years_df) == 0) {
+    cat("person_years_df is empty for iteration", i, "\n")
+    processed_dataframes[[i]] <- NULL
+    next
+  }
+  
   # Merge the person_years_df with the original dataframe
   df <- bind_cols(df, person_years_df)
   
@@ -231,21 +246,60 @@ calculate_and_add_person_years <- function(df) {
   cat("Final dataframe:\n")
   print(head(df))
   
-  return(df)
+  # Store the processed dataframe in the list
+  processed_dataframes[[i]] <- df
 }
 
-# Apply the function to each iteration and add the year columns to the dataframes
-split_dataframes <- lapply(seq_along(split_dataframes), function(i) {
-  cat("Processing iteration", i, "of", length(split_dataframes), "\n")
-  split_dataframes[[i]] <- calculate_and_add_person_years(split_dataframes[[i]])
-  return(split_dataframes[[i]])
-})
+# Check the final dataframes
+cat("Final dataframe for iteration 1:\n")
+print(head(processed_dataframes[[1]]))
+cat("Final dataframe for iteration 10:\n")
+print(head(processed_dataframes[[10]]))
 
 # View the first dataframe for QA
-View(split_dataframes[["iteration_1"]])
+View(processed_dataframes[[1]])
 
 # View the last dataframe for QA
-View(split_dataframes[["iteration_1000"]])
+View(processed_dataframes[[10]])
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
