@@ -167,7 +167,8 @@ romania_pwid_hcv_test_negatives <- romania_pwid_hcv_test %>%
   mutate(
     iteration = NA,
     random_infection_dtes = NA,
-    person_years = days_risk / 365.25
+    person_years = days_risk / 365.25,
+    midpoint_year = NA
   )
 
 # QA for rows where appointment_dte_lag is less than appointment_dte
@@ -188,9 +189,12 @@ View(split_dataframes[["iteration_1000"]])
 # Initialize an empty list to store the results
 processed_dataframes <- list()
 
+# Define the years for which we need to create columns
+required_years <- 2013:2022
+
 # Loop through the first 10 iterations
-for (i in 1:10) {
-  cat("Processing iteration", i, "of", 10, "\n")
+for (i in 1:1000) {
+  cat("Processing iteration", i, "of", 1000, "\n")
   
   # Get the dataframe for the current iteration
   df <- split_dataframes[[i]]
@@ -235,11 +239,25 @@ for (i in 1:10) {
   # Merge the person_years_df with the original dataframe
   df <- bind_cols(df, person_years_df)
   
-  # Create columns for each year and set the value to 1 if hcv_test_rslt equals 1
-  years <- unique(df$midpoint_year)
-  for (year in years) {
-    df <- df %>%
-      mutate(!!paste0("hcv_test_", year) := ifelse(midpoint_year == year & hcv_test_rslt == 1, 1, 0))
+  # Ensure all required columns are present
+  for (year in required_years) {
+    column_name <- paste0("hcv_test_", year)
+    if (!(column_name %in% names(df))) {
+      df[[column_name]] <- 0
+    }
+  }
+  
+  # Populate the hcv_test_20xx columns based on midpoint_year and hcv_test_rslt
+  for (year in required_years) {
+    column_name <- paste0("hcv_test_", year)
+    df[[column_name]] <- ifelse(df$midpoint_year == year & df$hcv_test_rslt == 1, 1, df[[column_name]])
+  }
+  
+  # Ensure all required person-year columns are present
+  for (year in required_years) {
+    if (!(as.character(year) %in% names(df))) {
+      df[[as.character(year)]] <- 0
+    }
   }
   
   # Print the final dataframe for debugging
@@ -250,251 +268,140 @@ for (i in 1:10) {
   processed_dataframes[[i]] <- df
 }
 
-# Check the final dataframes
-cat("Final dataframe for iteration 1:\n")
-print(head(processed_dataframes[[1]]))
-cat("Final dataframe for iteration 10:\n")
-print(head(processed_dataframes[[10]]))
-
 # View the first dataframe for QA
 View(processed_dataframes[[1]])
 
 # View the last dataframe for QA
-View(processed_dataframes[[10]])
+View(processed_dataframes[[1000]])
 
+# create 1000 dataframes of summed yearly person-years and incident cases
 
+# Initialize an empty list to store the summed dataframes
+summed_dataframes <- list()
 
+# Loop through all 1000 processed dataframes
+for (i in 1:1000) {
+  cat("Processing summed dataframe for iteration", i, "of", 1000, "\n")
+  
+  # Get the processed dataframe for the current iteration
+  df <- processed_dataframes[[i]]
+  
+  # Check if the dataframe is NULL
+  if (is.null(df)) {
+    next
+  }
+  
+  # Sum the specified columns
+  summed_df <- df %>%
+    summarise(
+      hcv_test_rslt = sum(hcv_test_rslt, na.rm = TRUE),
+      days_risk = sum(days_risk, na.rm = TRUE),
+      person_years = sum(person_years, na.rm = TRUE),
+      X2013 = sum(X2013, na.rm = TRUE),
+      X2014 = sum(X2014, na.rm = TRUE),
+      X2015 = sum(X2015, na.rm = TRUE),
+      X2016 = sum(X2016, na.rm = TRUE),
+      X2017 = sum(X2017, na.rm = TRUE),
+      X2018 = sum(X2018, na.rm = TRUE),
+      X2019 = sum(X2019, na.rm = TRUE),
+      X2020 = sum(X2020, na.rm = TRUE),
+      X2021 = sum(X2021, na.rm = TRUE),
+      X2022 = sum(X2022, na.rm = TRUE),
+      hcv_test_2013 = sum(hcv_test_2013, na.rm = TRUE),
+      hcv_test_2014 = sum(hcv_test_2014, na.rm = TRUE),
+      hcv_test_2015 = sum(hcv_test_2015, na.rm = TRUE),
+      hcv_test_2016 = sum(hcv_test_2016, na.rm = TRUE),
+      hcv_test_2017 = sum(hcv_test_2017, na.rm = TRUE),
+      hcv_test_2018 = sum(hcv_test_2018, na.rm = TRUE),
+      hcv_test_2019 = sum(hcv_test_2019, na.rm = TRUE),
+      hcv_test_2020 = sum(hcv_test_2020, na.rm = TRUE),
+      hcv_test_2021 = sum(hcv_test_2021, na.rm = TRUE),
+      hcv_test_2022 = sum(hcv_test_2022, na.rm = TRUE)
+    )
+  
+  # Store the summed dataframe in the list
+  summed_dataframes[[i]] <- summed_df
+}
 
+View(summed_dataframes[[1]])
+View(summed_dataframes[[1000]])
 
+# Combine the dataframes from summed_dataframes[[1]] to summed_dataframes[[10]]
+final_summed_df <- bind_rows(summed_dataframes[1:1000])
 
+# Print the final combined dataframe
+cat("Final combined dataframe:\n")
+print(head(final_summed_df))
 
+# Create a new column hcv_test_qa which sums up all the hcv_test_20xx columns
+final_summed_df <- final_summed_df %>%
+  mutate(hcv_test_qa = rowSums(across(starts_with("hcv_test_20")), na.rm = TRUE))
 
+# Function to calculate incidence rate and 95% CI per 100 person-years using negative binomial distribution
+calculate_incidence_rate_nb <- function(events, person_years) {
+  rate <- (events / person_years) * 100
+  se <- sqrt(events + (events^2 / person_years)) / person_years * 100
+  lower <- max(0, rate - 1.96 * se)
+  upper <- rate + 1.96 * se
+  return(c(rate, lower, upper))
+}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# Select the dataframe for iteration 1000
-df <- split_dataframes[["iteration_1000"]]
-
-# Calculate person-years for each year of observation and add them to the dataframe
-person_years_df <- df %>%
+# Calculate the overall incidence rate and 95% CI per 100 person-years for each row using negative binomial distribution
+final_summed_df <- final_summed_df %>%
   rowwise() %>%
   mutate(
-    start_year = year(appointment_dte),
-    end_year = year(appointment_dte_lag),
-    start_date = appointment_dte,
-    end_date = appointment_dte_lag
+    overall_incidence_rate = calculate_incidence_rate_nb(hcv_test_rslt, person_years)[1],
+    overall_incidence_lower = calculate_incidence_rate_nb(hcv_test_rslt, person_years)[2],
+    overall_incidence_upper = calculate_incidence_rate_nb(hcv_test_rslt, person_years)[3]
   ) %>%
-  do({
-    data <- .
-    years <- seq(data$start_year, data$end_year)
-    person_years <- sapply(years, function(year) {
-      start <- max(as.Date(paste0(year, "-01-01")), data$start_date)
-      end <- min(as.Date(paste0(year, "-12-31")), data$end_date)
-      as.numeric(difftime(end, start, units = "days")) / 365.25
-    })
-    names(person_years) <- years
-    data.frame(t(person_years))
-  }) %>%
   ungroup()
 
-# Merge the person_years_df with the original dataframe
-df <- bind_cols(df, person_years_df)
-
-# Create columns for each year and set the value to 1 if hcv_test_rslt equals 1
-years <- unique(df$midpoint_year)
-for (year in years) {
-  df <- df %>%
-    mutate(!!paste0("hcv_test_", year) := ifelse(midpoint_year == year & hcv_test_rslt == 1, 1, 0))
-}
-
-# View the updated dataframe for QA
-View(df)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# name each dataframe in the list
-names(split_dataframes) <- paste0("iteration_", seq_along(split_dataframes))
-
-# view the first and last dataframe for QA
-View(split_dataframes[["iteration_1"]])
-View(split_dataframes[["iteration_1000"]])
-
-# Function to calculate person-years for each year of observation and add them to the dataframe
-calculate_and_add_person_years <- function(df) {
-  person_years_df <- df %>%
+# Calculate yearly incidence rates and 95% CIs per 100 person-years for each row using negative binomial distribution
+for (year in 2013:2022) {
+  final_summed_df <- final_summed_df %>%
     rowwise() %>%
     mutate(
-      start_year = year(appointment_dte),
-      end_year = year(appointment_dte_lag),
-      start_date = appointment_dte,
-      end_date = appointment_dte_lag
+      !!paste0("incidence_rate_", year) := calculate_incidence_rate_nb(get(paste0("hcv_test_", year)), get(paste0("X", year)))[1],
+      !!paste0("incidence_lower_", year) := calculate_incidence_rate_nb(get(paste0("hcv_test_", year)), get(paste0("X", year)))[2],
+      !!paste0("incidence_upper_", year) := calculate_incidence_rate_nb(get(paste0("hcv_test_", year)), get(paste0("X", year)))[3]
     ) %>%
-    do({
-      data <- .
-      years <- seq(data$start_year, data$end_year)
-      person_years <- sapply(years, function(year) {
-        start <- max(as.Date(paste0(year, "-01-01")), data$start_date)
-        end <- min(as.Date(paste0(year, "-12-31")), data$end_date)
-        as.numeric(difftime(end, start, units = "days")) / 365.25
-      })
-      names(person_years) <- years
-      data.frame(t(person_years))
-    }) %>%
     ungroup()
-  
-  # Merge the person_years_df with the original dataframe
-  df <- bind_cols(df, person_years_df)
-  return(df)
 }
 
+# View the final combined dataframe for QA
+View(final_summed_df)
 
-View(split_dataframes[["iteration_1000"]])
+# calculate the median, 2.5th percentile, and 97.5th percentile for the overall incidence rate
+median_incidence_rate <- median(final_summed_df$overall_incidence_rate, na.rm = TRUE)
+lower_bound_overall <- quantile(final_summed_df$overall_incidence_rate, 0.025, na.rm = TRUE)
+upper_bound_overall <- quantile(final_summed_df$overall_incidence_rate, 0.975, na.rm = TRUE)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# convert time variables to numeric for all iterations
-split_dataframes <- lapply(split_dataframes, function(df) {
-  df <- df %>%
-    mutate(
-      appointment_dte = as.numeric(appointment_dte),
-      appointment_dte_lag = as.numeric(appointment_dte_lag),
-      random_infection_dtes = as.numeric(random_infection_dtes)
-    )
-  return(df)
+# Calculate the median incidence rates for each year from 2013 to 2022
+yearly_medians <- sapply(2013:2022, function(year) {
+  median(final_summed_df[[paste0("incidence_rate_", year)]], na.rm = TRUE)
 })
 
+yearly_lower_bounds <- sapply(2013:2022, function(year) {
+  quantile(final_summed_df[[paste0("incidence_rate_", year)]], 0.025, na.rm = TRUE)
+})
 
+yearly_upper_bounds <- sapply(2013:2022, function(year) {
+  quantile(final_summed_df[[paste0("incidence_rate_", year)]], 0.975, na.rm = TRUE)
+})
 
-# view the first and last dataframe for QA
-View(split_dataframes[["iteration_1"]])
-View(split_dataframes[["iteration_1000"]])
+# Create a new dataframe with the overall and yearly incidence rates and lower bounds
+results_df <- data.frame(
+  Incidence_year = c("Overall incidence rate", as.character(2013:2022)),
+  Incidence_rate = c(median_incidence_rate, yearly_medians),
+  Lower_bound = c(lower_bound_overall, yearly_lower_bounds),
+  Upper_bound = c(upper_bound_overall, yearly_upper_bounds)
+)
 
-# initialize a list to store the results
-results_list <- vector("list", length(split_dataframes))
+# Print the results dataframe
+cat("Results dataframe:\n")
+print(results_df)
 
-# calculate total person-years and total incident cases for each dataframe
-for (i in seq_along(split_dataframes)) {
-  df <- split_dataframes[[i]]
-  total_person_years <- sum(df$person_years, na.rm = TRUE)
-  total_cases <- sum(df$hcv_test_rslt == 1, na.rm = TRUE)
-  incidence_rate <- (total_cases / total_person_years) * 100
-  results_list[[i]] <- data.frame(
-    iteration = i,
-    total_cases = total_cases,
-    total_person_years = total_person_years,
-    incidence_rate = incidence_rate
-  )
-}
-
-# combine the results into a single dataframe
-results_df <- do.call(rbind, results_list)
-
-# calculate the median, 2.5th percentile, and 97.5th percentile for the incidence rate
-median_incidence_rate <- median(results_df$incidence_rate, na.rm = TRUE)
-lower_bound <- quantile(results_df$incidence_rate, 0.025, na.rm = TRUE)
-upper_bound <- quantile(results_df$incidence_rate, 0.975, na.rm = TRUE)
-
-# Summarize the model results
-summary(romania_pwid_year)
-
-
-
-
-
-
-
+View(results_df)
 
 
 
@@ -520,31 +427,3 @@ View(results_df)
 cat("Median Incidence Rate (per 100 person-years):", median_incidence_rate, "\n")
 cat("95% Uncertainty Interval:", lower_bound, "-", upper_bound, "\n")
 
-
-
-# Combine all iterations into a single dataframe
-combined_df <- bind_rows(split_dataframes)
-
-# Ensure the necessary columns are present
-combined_df <- combined_df %>%
-  filter(!is.na(midpoint_year)) %>%
-  mutate(
-    hcv_test_rslt = as.numeric(hcv_test_rslt == 1)  # Convert to binary outcome
-  )
-
-# Fit the generalized linear model with a negative binomial distribution
-model <- glm.nb(hcv_test_rslt ~ midpoint_year + offset(log(person_years)), data = combined_df)
-
-# Summarize the model results
-summary(model)
-
-# Print the model coefficients
-cat("Model Coefficients:\n")
-print(coef(model))
-
-# Calculate the incidence rate ratio (IRR) and 95% confidence intervals
-exp_coef <- exp(coef(model))
-conf_int <- exp(confint(model))
-
-cat("Incidence Rate Ratio (IRR) and 95% Confidence Intervals:\n")
-print(data.frame(IRR = exp_coef, Lower_CI = conf_int[, 1], Upper_CI = conf_int[, 2]))
