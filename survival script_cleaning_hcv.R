@@ -268,6 +268,22 @@ for (i in 1:1000) {
   processed_dataframes[[i]] <- df
 }
 
+# create year variable
+for (i in 1:length(processed_dataframes)) {
+  # Get the processed dataframe for the current iteration
+  df <- processed_dataframes[[i]]
+  
+  # Create a new column 'year' by extracting the year from 'appointment_dte_lag'
+  df <- df %>%
+    mutate(year = as.numeric(format(appointment_dte_lag, "%Y")))
+  
+  # Convert 'year' to a factor to treat it as a categorical variable
+  df$year <- as.factor(df$year)
+  
+  # Store the updated dataframe back in the list
+  processed_dataframes[[i]] <- df
+}
+
 # View the first dataframe for QA
 View(processed_dataframes[[1]])
 
@@ -288,11 +304,8 @@ ggplot(df, aes(x = person_years)) +
 # analysis with packages
 
 # Initialize lists to store the models
-nb_models <- list()
 poisson_models <- list()
-
-# Define control parameters for glm.nb to increase the alternation limit
-control_params <- glm.control(maxit = 1000)
+poisson_models2 <- list()
 
 # Loop through all 1000 processed dataframes
 for (i in 1:1000) {
@@ -301,102 +314,83 @@ for (i in 1:1000) {
   # Get the processed dataframe for the current iteration
   df <- processed_dataframes[[i]]
   
-  # Fit the negative binomial model with increased alternation limit
-  nb_model <- glm.nb(hcv_test_rslt ~ offset(person_years), data = df, link = log, control = control_params)
-  
+   # Add a small constant to person_years to avoid log(0)
+  epsilon <- 1e-10
+  df <- df %>%
+  mutate(person_years = ifelse(person_years == 0, epsilon, person_years))
+
   # Fit the Poisson model
-  poisson_model <- glm(hcv_test_rslt ~ offset(person_years), family = poisson(link = "log"), data = df)
-  
+  poisson_model <- glm(hcv_test_rslt ~ offset(log(person_years)), family = poisson(link = "log"), data = df)
+  poisson_model2 <- glm(hcv_test_rslt ~ year + offset(log(person_years)), family = poisson(link = "log"), data = df)
+
   # Store the models in the lists
-  nb_models[[i]] <- nb_model
   poisson_models[[i]] <- poisson_model
+  poisson_models2[[i]] <- poisson_model2
 }
 
-# Print summary of the first negative binomial model for QA
-cat("Summary of the first negative binomial model:\n")
-print(summary(nb_models[[1]]))
-
-# Print summary of the first Poisson model for QA
-cat("Summary of the first Poisson model:\n")
-print(summary(poisson_models[[1]]))
-
-# Print summary of the last negative binomial model for QA
-cat("Summary of the last negative binomial model:\n")
-print(summary(nb_models[[1000]]))
-
-# Print summary of the last Poisson model for QA
-cat("Summary of the last Poisson model:\n")
-print(summary(poisson_models[[1000]]))
-
-# Initialize a list to store the results
-results <- list()
-
-# Loop through all 1000 negative binomial models
-for (i in 1:1000) {
-  # Get the negative binomial model for the current iteration
-  nb_model <- nb_models[[i]]
-  
-  # Extract the intercept and its standard error
-  intercept <- coef(nb_model)[1]
-  se_intercept <- sqrt(vcov(nb_model)[1, 1])
-  
-  # Calculate the incidence rate and 95% confidence intervals
-  incidence_rate <- exp(intercept)
-  lower_ci <- exp(intercept - 1.96 * se_intercept)
-  upper_ci <- exp(intercept + 1.96 * se_intercept)
-  
-  # Store the results in a list
-  results[[i]] <- data.frame(
-    iteration = i,
-    incidence_rate = incidence_rate,
-    lower_ci = lower_ci,
-    upper_ci = upper_ci
-  )
-}
-
-# Combine the results into a single dataframe
-results_df_nb <- do.call(rbind, results)
-
-# Print the first few rows of the results dataframe
-print(head(results_df_nb))
-
-# Save the results dataframe to a CSV file
-write.csv(results_df_nb, "nb_model_results.csv", row.names = FALSE)
-
-# Initialize a list to store the results for Poisson models
+# Initialize lists to store the results for Poisson models
 poisson_results <- list()
+poisson_results2 <- list()
+
+# Initialize lists to store the results for Poisson models
+poisson_results <- list()
+poisson_results2 <- list()
 
 # Loop through all 1000 Poisson models
 for (i in 1:1000) {
-  # Get the Poisson model for the current iteration
+  # Get the Poisson models for the current iteration
   poisson_model <- poisson_models[[i]]
+  poisson_model2 <- poisson_models2[[i]]
   
-  # Extract the intercept and its standard error
-  intercept <- coef(poisson_model)[1]
-  se_intercept <- sqrt(vcov(poisson_model)[1, 1])
+  # Extract the intercept and its standard error for the first Poisson model
+  intercept1 <- coef(poisson_model)[1]
+  se_intercept1 <- sqrt(vcov(poisson_model)[1, 1])
   
-  # Calculate the incidence rate and 95% confidence intervals
-  incidence_rate <- exp(intercept)
-  lower_ci <- exp(intercept - 1.96 * se_intercept)
-  upper_ci <- exp(intercept + 1.96 * se_intercept)
+  # Calculate the incidence rate and 95% confidence intervals for the first Poisson model
+  incidence_rate1 <- exp(intercept1)
+  lower_ci1 <- exp(intercept1 - 1.96 * se_intercept1)
+  upper_ci1 <- exp(intercept1 + 1.96 * se_intercept1)
   
-  # Store the results in a list
+  # Store the results for the first Poisson model in a list
   poisson_results[[i]] <- data.frame(
     iteration = i,
-    incidence_rate = incidence_rate,
-    lower_ci = lower_ci,
-    upper_ci = upper_ci
+    incidence_rate = incidence_rate1,
+    lower_ci = lower_ci1,
+    upper_ci = upper_ci1
+  )
+  
+  # Extract the intercept and its standard error for the second Poisson model
+  intercept2 <- coef(poisson_model2)[1]
+  se_intercept2 <- sqrt(vcov(poisson_model2)[1, 1])
+  
+  # Calculate the incidence rate and 95% confidence intervals for the second Poisson model
+  incidence_rate2 <- exp(intercept2)
+  lower_ci2 <- exp(intercept2 - 1.96 * se_intercept2)
+  upper_ci2 <- exp(intercept2 + 1.96 * se_intercept2)
+  
+  # Store the results for the second Poisson model in a list
+  poisson_results2[[i]] <- data.frame(
+    iteration = i,
+    incidence_rate = incidence_rate2,
+    lower_ci = lower_ci2,
+    upper_ci = upper_ci2
   )
 }
 
-# Combine the results into a single dataframe
+# Combine the results into single dataframes
 results_df_poisson <- do.call(rbind, poisson_results)
+results_df_poisson2 <- do.call(rbind, poisson_results2)
 
-# Print the first few rows of the results dataframe
+# Print the first few rows of the results dataframes
+cat("Results for the first Poisson model:\n")
 print(head(results_df_poisson))
 
-# Save the results dataframe to a CSV file
+cat("Results for the second Poisson model:\n")
+print(head(results_df_poisson2))
+
+# Save the results dataframes to CSV files
 write.csv(results_df_poisson, "poisson_model_results.csv", row.names = FALSE)
+write.csv(results_df_poisson2, "poisson_model2_results.csv", row.names = FALSE)
 
 # create 1000 dataframes of summed yearly person-years and incident cases
 
@@ -543,14 +537,9 @@ results_poisson <- data.frame(
 )
 
 # calculate the median, 2.5th percentile, and 97.5th percentile for the overall incidence rate
-median_incidence_rate <- median(results_df_nb$incidence_rate, na.rm = TRUE)
-lower_bound_overall <- quantile(results_df_nb$lower_ci, 0.025, na.rm = TRUE)
-upper_bound_overall <- quantile(results_df_nb$upper_ci, 0.975, na.rm = TRUE)
-
-# Create a new dataframe with the overall and yearly incidence rates and lower bounds
-results_nb <- data.frame(
-  Incidence_year = c("Overall incidence rate"),
-  Incidence_rate = c(median_incidence_rate),
-  Lower_bound = c(lower_bound_overall),
-  Upper_bound = c(upper_bound_overall)
-)
+median_incidence_rate <- median(results_df_poisson$incidence_rate, na.rm = TRUE)
+lower_bound_overall <- quantile(results_df_poisson$lower_ci, 0.025, na.rm = TRUE)
+upper_bound_overall <- quantile(results_df_poisson$upper_ci, 0.975, na.rm = TRUE)
+median_incidence_rate
+lower_bound_overall
+upper_bound_overall
