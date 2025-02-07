@@ -1,5 +1,5 @@
 ## load packages
-pacman::p_load(dplyr, tidyr, withr, lubridate, MASS, writexl, readxl, arsenal, survival, broom, ggplot2)
+pacman::p_load(tidyr, withr, lubridate, MASS, writexl, readxl, arsenal, survival, broom, ggplot2, dplyr)
 
 ## set wd
 setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/Romania PWID/data")
@@ -27,6 +27,63 @@ processed_dataframes <- readRDS("processed_dataframes.rds")
 View(processed_dataframes[[1]])
 View(processed_dataframes[[1000]])
 
+# Define the function to process each dataframe
+process_dataframe <- function(df, midpoint_year) {
+  # Rename the existing "year" column (if it exists) to avoid duplication
+  if ("year" %in% colnames(df)) {
+    df <- df %>%
+      rename(existing_year = year)
+  }
+  
+  # Reshape the columns X2013 to X2022 to long format
+  df_long <- df %>%
+    pivot_longer(cols = starts_with("X"), 
+                 names_to = "year", 
+                 names_prefix = "X", 
+                 values_to = "time_at_risk") %>%
+    filter(!is.na(time_at_risk))  # Remove rows where time_at_risk is NA
+  
+  # Set hcv_test_rslt to 0 when year does not equal midpoint_year
+  df_long <- df_long %>%
+    mutate(hcv_test_rslt = ifelse(year == midpoint_year, 1, 0))
+  
+  # Keep only the specified columns
+  df_long <- df_long %>%
+    dplyr::select(id, hcv_test_rslt, appointment_dte, appointment_dte_lag, year, time_at_risk)
+  
+  return(df_long)
+}
+
+# Initialize a list to store the processed dataframes
+processed_dataframes_long <- list()
+
+# Loop over all 1000 dataframes in processed_dataframes
+for (i in 1:length(processed_dataframes)) {
+  cat("Processing dataframe", i, "of", length(processed_dataframes), "\n")
+  processed_dataframes_long[[i]] <- process_dataframe(processed_dataframes[[i]], midpoint_year)
+}
+
+# View the first and last processed dataframes for verification
+View(processed_dataframes_long[[1]])
+View(processed_dataframes_long[[length(processed_dataframes)]])
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # Function to make years long for Poisson regression
 expand_person_time <- function(df) {
   df %>%
@@ -35,27 +92,29 @@ expand_person_time <- function(df) {
                                      to = as.Date(appointment_dte_lag), 
                                      by = "year"))) %>%
     unnest(years_followed) %>%
-    mutate(year = as.numeric(format(years_followed, "%Y"))) %>%
+    mutate(year = as.numeric(format(years_followed, "%Y")),
+           start_date = pmax(appointment_dte, as.Date(paste0(year, "-01-01"))),
+           end_date = pmin(appointment_dte_lag, as.Date(paste0(year, "-12-31")))) %>%
     group_by(id, year) %>%
-    summarise(
+    reframe(
       hcv_test_rslt = ifelse(year == midpoint_year, 1, 0),  # Set hcv_test_rslt to 1 for midpoint_year, otherwise 0
-      person_years = as.numeric(difftime(min(appointment_dte_lag, as.Date(paste0(year, "-12-31"))), 
-                                         max(appointment_dte, as.Date(paste0(year, "-01-01"))), 
-                                         units = "days")) / 365.25,
-      .groups = "drop"
+      person_years = as.numeric(difftime(end_date, start_date, units = "days")) / 365.25,
+      start_date = first(start_date),
+      end_date = first(end_date)
     ) %>%
     ungroup() %>%
-    complete(year = seq(min(year), max(year), by = 1), fill = list(hcv_test_rslt = 0, person_years = 0)) %>%
-    mutate(id = unique(df$id)[1])  # Ensure the id is retained correctly
+    filter(!is.na(person_years) & person_years > 0) %>%
+    complete(id, year = seq(min(year), max(year), by = 1), fill = list(hcv_test_rslt = 0, person_years = 0, start_date = NA, end_date = NA)) %>%
+    fill(start_date, end_date, .direction = "downup") %>%
+    filter(!is.na(start_date) & !is.na(end_date)) %>%
+    filter(start_date <= end_date)  # Ensure start_date is before or equal to end_date
 }
-
-
 
 # Initialize a list to store the expanded dataframes
 processed_dataframes_long <- list()
 
-# Apply the function to each dataframe in processed_dataframes and store the results
-for (i in 1:length(processed_dataframes)) {
+# Apply the function to the first 10 dataframes in processed_dataframes and store the results
+for (i in 1:min(10, length(processed_dataframes))) {
   cat("Expanding dataframe", i, "of", length(processed_dataframes), "\n")
   processed_dataframes_long[[i]] <- expand_person_time(processed_dataframes[[i]])
 }
