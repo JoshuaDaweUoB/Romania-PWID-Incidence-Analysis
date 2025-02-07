@@ -1,5 +1,8 @@
-# load packages
-pacman::p_load(dplyr, arsenal, survival)
+## load packages
+pacman::p_load(dplyr, tidyr, withr, lubridate, MASS, writexl, readxl, arsenal, survival, broom, ggplot2)
+
+## set wd
+setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/Romania PWID/data")
 
 ## baseline analysis
 
@@ -21,11 +24,56 @@ analysis_data_hcv_bl <- subset(romania_pwid_hcv_analysis, id_seq == 1)
 processed_dataframes <- readRDS("processed_dataframes.rds")
 
 # Verify that the dataframes are loaded correctly
-cat("First dataframe:\n")
-print(head(processed_dataframes[[1]]))
+View(processed_dataframes[[1]])
+View(processed_dataframes[[1000]])
 
-cat("Last dataframe:\n")
-print(head(processed_dataframes[[1000]]))
+# Function to make years long for Poisson regression
+expand_person_time <- function(df) {
+  df %>%
+    rowwise() %>%
+    mutate(years_followed = list(seq(from = as.Date(appointment_dte), 
+                                     to = as.Date(appointment_dte_lag), 
+                                     by = "year"))) %>%
+    unnest(years_followed) %>%
+    mutate(year = as.numeric(format(years_followed, "%Y"))) %>%
+    group_by(id, year) %>%
+    summarise(
+      hcv_test_rslt = ifelse(year == midpoint_year, 1, 0),  # Set hcv_test_rslt to 1 for midpoint_year, otherwise 0
+      person_years = as.numeric(difftime(min(appointment_dte_lag, as.Date(paste0(year, "-12-31"))), 
+                                         max(appointment_dte, as.Date(paste0(year, "-01-01"))), 
+                                         units = "days")) / 365.25,
+      .groups = "drop"
+    ) %>%
+    ungroup() %>%
+    complete(year = seq(min(year), max(year), by = 1), fill = list(hcv_test_rslt = 0, person_years = 0)) %>%
+    mutate(id = unique(df$id)[1])  # Ensure the id is retained correctly
+}
+
+
+
+# Initialize a list to store the expanded dataframes
+processed_dataframes_long <- list()
+
+# Apply the function to each dataframe in processed_dataframes and store the results
+for (i in 1:length(processed_dataframes)) {
+  cat("Expanding dataframe", i, "of", length(processed_dataframes), "\n")
+  processed_dataframes_long[[i]] <- expand_person_time(processed_dataframes[[i]])
+}
+
+View(processed_dataframes_long[[1]])
+View(processed_dataframes_long[[1000]])
+
+# Save the list of expanded dataframes to a file
+saveRDS(processed_dataframes_long, file = "processed_dataframes_long.rds")
+
+
+
+
+
+
+
+
+
 # Initialize lists to store the models
 poisson_models <- list()
 poisson_models2 <- list()
