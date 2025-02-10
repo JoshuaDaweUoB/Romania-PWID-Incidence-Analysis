@@ -99,7 +99,16 @@ for (i in 1:1000) {
   
   # Extract the coefficients and their standard errors
   coef_df <- as.data.frame(coef(summary(poisson_model_long)))
+  coef_df$year <- rownames(coef_df)
   coef_df$iteration <- i
+  
+  # Calculate the incidence rate and 95% confidence intervals for each year
+  coef_df <- coef_df %>%
+    mutate(
+      incidence_rate = exp(Estimate) * 100,
+      lower_ci = exp(Estimate - 1.96 * `Std. Error`) * 100,
+      upper_ci = exp(Estimate + 1.96 * `Std. Error`) * 100
+    )
   
   # Store the results in the list
   poisson_results_long[[i]] <- coef_df
@@ -113,349 +122,79 @@ cat("Results for the Poisson model:\n")
 print(head(results_poisson_model_long))
 
 # Save the results dataframes to CSV files
-write.csv(results_poisson_model_long, "results_poisson_model_long_results.csv", row.names = FALSE)
+write.csv(results_poisson_model_long, "results_poisson_model_long_results.csv", row.names = TRUE)
 
-
-
-
-# Initialize lists to store the models
-poisson_models <- list()
-poisson_models2 <- list()
-
-# Loop through all 1000 processed dataframes
-for (i in 1:1000) {
-  cat("Fitting models for dataframe", i, "of", 1000, "\n")
-  
-  # Get the processed dataframe for the current iteration
-  df <- processed_dataframes[[i]]
-  
-   # Add a small constant to person_years to avoid log(0)
-  epsilon <- 1e-10
-  df <- df %>%
-  mutate(person_years = ifelse(person_years == 0, epsilon, person_years))
-
-  # Fit the Poisson model
-  poisson_model <- glm(hcv_test_rslt ~ offset(log(person_years)), family = poisson(link = "log"), data = df)
-  poisson_model_long <- glm(hcv_test_rslt ~ year + offset(log(person_years)), family = poisson(link = "log"), data = df)
-
-  # Store the models in the lists
-  poisson_models[[i]] <- poisson_model
-  poisson_models2[[i]] <- poisson_model2
-}
-
-# Initialize lists to store the results for Poisson models
-poisson_results <- list()
-poisson_results2 <- list()
-
-# Initialize lists to store the results for Poisson models
-poisson_results <- list()
-poisson_results2 <- list()
+# Initialize a list to store the yearly incidence rates and confidence intervals
+yearly_incidence_results <- list()
 
 # Loop through all 1000 Poisson models
 for (i in 1:1000) {
-  # Get the Poisson models for the current iteration
-  poisson_model <- poisson_models[[i]]
-  poisson_model2 <- poisson_models2[[i]]
+  # Get the Poisson model for the current iteration
+  poisson_model <- poisson_models_long[[i]]
   
-  # Extract the intercept and its standard error for the first Poisson model
-  intercept1 <- coef(poisson_model)[1]
-  se_intercept1 <- sqrt(vcov(poisson_model)[1, 1])
+  # Extract the coefficients and their standard errors for each year
+  coef_df <- as.data.frame(coef(summary(poisson_model)))
+  coef_df$year <- rownames(coef_df)
+  coef_df$iteration <- i
   
-  # Calculate the incidence rate and 95% confidence intervals for the first Poisson model
-  incidence_rate1 <- exp(intercept1)
-  lower_ci1 <- exp(intercept1 - 1.96 * se_intercept1)
-  upper_ci1 <- exp(intercept1 + 1.96 * se_intercept1)
-  
-  # Store the results for the first Poisson model in a list
-  poisson_results[[i]] <- data.frame(
-    iteration = i,
-    incidence_rate = incidence_rate1,
-    lower_ci = lower_ci1,
-    upper_ci = upper_ci1
-  )
-  
-  # Extract the intercept and its standard error for the second Poisson model
-  intercept2 <- coef(poisson_model2)[1]
-  se_intercept2 <- sqrt(vcov(poisson_model2)[1, 1])
-  
-  # Calculate the incidence rate and 95% confidence intervals for the second Poisson model
-  incidence_rate2 <- exp(intercept2)
-  lower_ci2 <- exp(intercept2 - 1.96 * se_intercept2)
-  upper_ci2 <- exp(intercept2 + 1.96 * se_intercept2)
-  
-  # Store the results for the second Poisson model in a list
-  poisson_results2[[i]] <- data.frame(
-    iteration = i,
-    incidence_rate = incidence_rate2,
-    lower_ci = lower_ci2,
-    upper_ci = upper_ci2
-  )
-}
-
-# Combine the results into single dataframes
-results_df_poisson <- do.call(rbind, poisson_results)
-results_df_poisson2 <- do.call(rbind, poisson_results2)
-
-# Print the first few rows of the results dataframes
-cat("Results for the first Poisson model:\n")
-print(head(results_df_poisson))
-
-cat("Results for the second Poisson model:\n")
-print(head(results_df_poisson2))
-
-# Save the results dataframes to CSV files
-write.csv(results_df_poisson, "poisson_model_results.csv", row.names = FALSE)
-write.csv(results_df_poisson2, "poisson_model2_results.csv", row.names = FALSE)
-
-# create 1000 dataframes of summed yearly person-years and incident cases
-
-# Initialize an empty list to store the summed dataframes
-summed_dataframes <- list()
-
-# Loop through all 1000 processed dataframes
-for (i in 1:1000) {
-  cat("Processing summed dataframe for iteration", i, "of", 1000, "\n")
-  
-  # Get the processed dataframe for the current iteration
-  df <- processed_dataframes[[i]]
-  
-  # Check if the dataframe is NULL
-  if (is.null(df)) {
-    next
-  }
-  
-  # Sum the specified columns
-  summed_df <- df %>%
-    summarise(
-      hcv_test_rslt = sum(hcv_test_rslt, na.rm = TRUE),
-      days_risk = sum(days_risk, na.rm = TRUE),
-      person_years = sum(person_years, na.rm = TRUE),
-      X2013 = sum(X2013, na.rm = TRUE),
-      X2014 = sum(X2014, na.rm = TRUE),
-      X2015 = sum(X2015, na.rm = TRUE),
-      X2016 = sum(X2016, na.rm = TRUE),
-      X2017 = sum(X2017, na.rm = TRUE),
-      X2018 = sum(X2018, na.rm = TRUE),
-      X2019 = sum(X2019, na.rm = TRUE),
-      X2020 = sum(X2020, na.rm = TRUE),
-      X2021 = sum(X2021, na.rm = TRUE),
-      X2022 = sum(X2022, na.rm = TRUE),
-      hcv_test_2013 = sum(hcv_test_2013, na.rm = TRUE),
-      hcv_test_2014 = sum(hcv_test_2014, na.rm = TRUE),
-      hcv_test_2015 = sum(hcv_test_2015, na.rm = TRUE),
-      hcv_test_2016 = sum(hcv_test_2016, na.rm = TRUE),
-      hcv_test_2017 = sum(hcv_test_2017, na.rm = TRUE),
-      hcv_test_2018 = sum(hcv_test_2018, na.rm = TRUE),
-      hcv_test_2019 = sum(hcv_test_2019, na.rm = TRUE),
-      hcv_test_2020 = sum(hcv_test_2020, na.rm = TRUE),
-      hcv_test_2021 = sum(hcv_test_2021, na.rm = TRUE),
-      hcv_test_2022 = sum(hcv_test_2022, na.rm = TRUE)
+  # Calculate the incidence rate and 95% confidence intervals for each year
+  coef_df <- coef_df %>%
+    mutate(
+      incidence_rate = exp(Estimate) * 100,
+      lower_ci = exp(Estimate - 1.96 * `Std. Error`) * 100,
+      upper_ci = exp(Estimate + 1.96 * `Std. Error`) * 100
     )
   
-  # Store the summed dataframe in the list
-  summed_dataframes[[i]] <- summed_df
+  # Store the results in the list
+  yearly_incidence_results[[i]] <- coef_df
 }
 
-View(summed_dataframes[[1]])
-View(summed_dataframes[[1000]])
-
-# Combine the dataframes from summed_dataframes[[1]] to summed_dataframes[[10]]
-final_summed_df <- bind_rows(summed_dataframes[1:1000])
-
-# Print the final combined dataframe
-cat("Final combined dataframe:\n")
-print(head(final_summed_df))
-
-# Create a new column hcv_test_qa which sums up all the hcv_test_20xx columns
-final_summed_df <- final_summed_df %>%
-  mutate(hcv_test_qa = rowSums(across(starts_with("hcv_test_20")), na.rm = TRUE))
-
-# Function to calculate incidence rate and 95% CI per 100 person-years using negative binomial distribution
-calculate_incidence_rate_nb <- function(events, person_years) {
-  rate <- (events / person_years) * 100
-  se <- sqrt(events + (events^2 / person_years)) / person_years * 100
-  lower <- max(0, rate - 1.96 * se)
-  upper <- rate + 1.96 * se
-  return(c(rate, lower, upper))
+# Save the yearly incidence results as 1000 dataframes
+for (i in 1:1000) {
+  write.csv(yearly_incidence_results[[i]], paste0("yearly_incidence_results_", i, ".csv"), row.names = TRUE)
 }
 
-# Calculate the overall incidence rate and 95% CI per 100 person-years for each row using negative binomial distribution
-final_summed_df <- final_summed_df %>%
-  rowwise() %>%
-  mutate(
-    overall_incidence_rate = calculate_incidence_rate_nb(hcv_test_rslt, person_years)[1],
-    overall_incidence_lower = calculate_incidence_rate_nb(hcv_test_rslt, person_years)[2],
-    overall_incidence_upper = calculate_incidence_rate_nb(hcv_test_rslt, person_years)[3]
-  ) %>%
-  ungroup()
+# Combine the yearly incidence results into a single dataframe
+results_yearly_incidence <- do.call(rbind, yearly_incidence_results)
 
-# Calculate yearly incidence rates and 95% CIs per 100 person-years for each row using negative binomial distribution
-for (year in 2013:2022) {
-  final_summed_df <- final_summed_df %>%
-    rowwise() %>%
-    mutate(
-      !!paste0("incidence_rate_", year) := calculate_incidence_rate_nb(get(paste0("hcv_test_", year)), get(paste0("X", year)))[1],
-      !!paste0("incidence_lower_", year) := calculate_incidence_rate_nb(get(paste0("hcv_test_", year)), get(paste0("X", year)))[2],
-      !!paste0("incidence_upper_", year) := calculate_incidence_rate_nb(get(paste0("hcv_test_", year)), get(paste0("X", year)))[3]
-    ) %>%
-    ungroup()
-}
+# Filter the results to include only the specified years
+filtered_results_yearly_incidence <- results_yearly_incidence %>%
+  filter(year %in% c("year2014", "year2015", "year2016", "year2017", "year2018", "year2019", "year2020", "year2021", "year2022"))
 
-# View the final combined dataframe for QA
-View(final_summed_df)
+# Print the first few rows of the filtered yearly incidence results dataframe
+cat("Filtered yearly incidence results:\n")
+print(head(filtered_results_yearly_incidence))
 
-# calculate the median, 2.5th percentile, and 97.5th percentile for the overall incidence rate
-median_incidence_rate <- median(final_summed_df$overall_incidence_rate, na.rm = TRUE)
-lower_bound_overall <- quantile(final_summed_df$overall_incidence_rate, 0.025, na.rm = TRUE)
-upper_bound_overall <- quantile(final_summed_df$overall_incidence_rate, 0.975, na.rm = TRUE)
+# Save the filtered yearly incidence results dataframe to a CSV file
+write.csv(filtered_results_yearly_incidence, "filtered_yearly_incidence_results.csv", row.names = TRUE)
 
-# Calculate the median incidence rates for each year from 2013 to 2022
-yearly_medians <- sapply(2013:2022, function(year) {
-  median(final_summed_df[[paste0("incidence_rate_", year)]], na.rm = TRUE)
-})
-
-yearly_lower_bounds <- sapply(2013:2022, function(year) {
-  quantile(final_summed_df[[paste0("incidence_rate_", year)]], 0.025, na.rm = TRUE)
-})
-
-yearly_upper_bounds <- sapply(2013:2022, function(year) {
-  quantile(final_summed_df[[paste0("incidence_rate_", year)]], 0.975, na.rm = TRUE)
-})
-
-# Create a new dataframe with the overall and yearly incidence rates and lower bounds
-results_df <- data.frame(
-  Incidence_year = c("Overall incidence rate", as.character(2013:2022)),
-  Incidence_rate = c(median_incidence_rate, yearly_medians),
-  Lower_bound = c(lower_bound_overall, yearly_lower_bounds),
-  Upper_bound = c(upper_bound_overall, yearly_upper_bounds)
-)
-
-# Print the results dataframe
-cat("Results dataframe:\n")
-print(results_df)
-View(results_df)
-
-# Write the results dataframe to an Excel file
-write_xlsx(results_df, "hcv_incidence_results.xlsx")
-
-# calculate the median, 2.5th percentile, and 97.5th percentile for the overall incidence rate
-median_incidence_rate <- median(results_df_poisson$incidence_rate, na.rm = TRUE)
-lower_bound_overall <- quantile(results_df_poisson$lower_ci, 0.025, na.rm = TRUE)
-upper_bound_overall <- quantile(results_df_poisson$upper_ci, 0.975, na.rm = TRUE)
-
-# Create a new dataframe with the overall and yearly incidence rates and lower bounds
-results_poisson <- data.frame(
-  Incidence_year = c("Overall incidence rate"),
-  Incidence_rate = c(median_incidence_rate),
-  Lower_bound = c(lower_bound_overall),
-  Upper_bound = c(upper_bound_overall)
-)
-
-# calculate the median, 2.5th percentile, and 97.5th percentile for the overall incidence rate
-median_incidence_rate <- median(results_df_poisson$incidence_rate, na.rm = TRUE)
-lower_bound_overall <- quantile(results_df_poisson$lower_ci, 0.025, na.rm = TRUE)
-upper_bound_overall <- quantile(results_df_poisson$upper_ci, 0.975, na.rm = TRUE)
-median_incidence_rate
-lower_bound_overall
-upper_bound_overall
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# overall incidence rate
-total_days_hcv <- sum(romania_pwid_hcv_analysis$days_risk)
-total_cases <- sum(romania_pwid_hcv_analysis$hcv_test_rslt)
-incidence_rate <- (total_cases / total_days_hcv) * 365.25 *100
-
-cat("Incidence rate of HCV per 100 person years:", incidence_rate)
-
-# unadjusted hazard ratio - time
-romania_pwid_year = coxph(
-  Surv(time = appointment_dte, time2 = appointment_dte_lag, event = hcv_test_rslt) ~ midpoint_year, 
-  data = romania_pwid_hcv_analysis
-)
-
-summary(romania_pwid_year)
-
-# by year incidence rate
-incidence_rate_year <- romania_pwid_hcv_analysis %>%
-  group_by(midpoint_year) %>%
+# Calculate the 2.5th, 97.5th, and median percentiles for each year
+uncertainty_intervals <- filtered_results_yearly_incidence %>%
+  group_by(year) %>%
   summarize(
-    events = sum(hcv_test_rslt == 1, na.rm = TRUE),     
-    person_time_years = sum(days_risk/365.25),    
-    incidence_rate = (events / person_time_years)*100,     
-    lower_ci = ifelse(events > 0, (qpois(0.025, events) / person_time_years)*100, NA),
-    upper_ci = ifelse(events > 0, (qpois(0.975, events + 1) / person_time_years)*100, NA)
+    median_incidence_rate = median(incidence_rate),
+    lower_ci = quantile(incidence_rate, 0.025),
+    upper_ci = quantile(incidence_rate, 0.975)
   )
 
-incidence_rate_year
+# Print the first few rows of the uncertainty intervals dataframe
+cat("Uncertainty intervals for yearly incidence rates:\n")
+print(head(uncertainty_intervals))
 
-# unadjusted hazard ratio - sex
-romania_pwid_sex = coxph(
-  Surv(time = appointment_dte, time2 = appointment_dte_lag, event = hcv_test_rslt) ~ gender, 
-  data = romania_pwid_hcv_analysis
-)
+# Save the uncertainty intervals dataframe to a CSV file
+write.csv(uncertainty_intervals, "uncertainty_intervals_yearly_incidence.csv", row.names = TRUE)
 
-summary(romania_pwid_sex)
+# Calculate the overall incidence rate and 95% confidence intervals for the specified years
+overall_incidence_results <- filtered_results_yearly_incidence %>%
+  summarize(
+    median_incidence_rate = median(incidence_rate),
+    lower_ci = quantile(incidence_rate, 0.025),
+    upper_ci = quantile(incidence_rate, 0.975)
+  )
 
-# unadjusted hazard ratio - ethnicity
-romania_pwid_ethnicity = coxph(
-  Surv(time = appointment_dte, time2 = appointment_dte_lag, event = hcv_test_rslt) ~ ethnic_roma, 
-  data = romania_pwid_hcv_analysis
-)
+# Print the overall incidence results
+cat("Overall incidence results:\n")
+print(overall_incidence_results)
 
-summary(romania_pwid_ethnicity)
-
-# unadjusted hazard ratio - homelessness
-romania_pwid_homeless = coxph(
-  Surv(time = appointment_dte, time2 = appointment_dte_lag, event = hcv_test_rslt) ~ homeless_current, 
-  data = romania_pwid_hcv_analysis
-)
-
-summary(romania_pwid_homeless)
-
-# unadjusted hazard ratio - sex work
-romania_pwid_sexwork = coxph(
-  Surv(time = appointment_dte, time2 = appointment_dte_lag, event = hcv_test_rslt) ~ sex_work_current + gender, 
-  data = romania_pwid_hcv_analysis
-)
-
-summary(romania_pwid_sexwork)
-
-# unadjusted hazard ratio - msm
-romania_pwid_msm = coxph(
-  Surv(time = appointment_dte, time2 = appointment_dte_lag, event = hcv_test_rslt) ~ msm_current, 
-  data = romania_pwid_hcv_analysis
-)
-
-summary(romania_pwid_msm)
-
-# adjusted hazard ratio - all covariates
-romania_pwid_adjusted = coxph(
-  Surv(time = appointment_dte, time2 = appointment_dte_lag, event = hcv_test_rslt) ~ gender + ethnic_roma + homeless_current + sex_work_current + msm_current, 
-  data = romania_pwid_hcv_analysis
-)
-
-summary(romania_pwid_adjusted)
-
-
+# Save the overall incidence results to a CSV file
+write.csv(overall_incidence_results, "overall_incidence_results.csv", row.names = TRUE)
