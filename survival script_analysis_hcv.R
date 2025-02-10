@@ -43,13 +43,21 @@ process_dataframe <- function(df, midpoint_year) {
                  values_to = "time_at_risk") %>%
     filter(!is.na(time_at_risk))  # Remove rows where time_at_risk is NA
   
-  # Set hcv_test_rslt to 0 when year does not equal midpoint_year
+  # Recode hcv_test_rslt and midpoint_year to 0 when they are invalid or NA
   df_long <- df_long %>%
-    mutate(hcv_test_rslt = ifelse(year == midpoint_year, 1, 0))
+    mutate(hcv_test_rslt = ifelse(is.na(hcv_test_rslt) | !is.numeric(hcv_test_rslt), 0, hcv_test_rslt))
+  
+  # Set hcv_test_rslt to 1 when year equals midpoint_year, otherwise 0
+  df_long <- df_long %>%
+    mutate(hcv_test_rslt = ifelse(year == midpoint_year, 1, hcv_test_rslt))
   
   # Keep only the specified columns
   df_long <- df_long %>%
     dplyr::select(id, hcv_test_rslt, appointment_dte, appointment_dte_lag, year, time_at_risk)
+  
+  # Sort by id and then by year
+  df_long <- df_long %>%
+    arrange(id, year)
   
   return(df_long)
 }
