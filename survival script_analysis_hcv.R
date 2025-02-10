@@ -78,10 +78,36 @@ View(processed_dataframes_long[[length(processed_dataframes)]])
 # Save the list of expanded dataframes to a file
 saveRDS(processed_dataframes_long, file = "processed_dataframes_long.rds")
 
+# yearly poisson regression
 
+# Initialize lists to store the models
+poisson_models_long <- list()
 
+# Loop through all 1000 processed dataframes
+for (i in 1:1000) {
+  cat("Fitting models for dataframe", i, "of", 1000, "\n")
+  
+  # Get the processed dataframe for the current iteration
+  df <- processed_dataframes_long[[i]]
+  
+  # Fit the Poisson model
+  poisson_model_long <- glm(hcv_test_rslt ~ year + offset(log(time_at_risk)), family = poisson(link = "log"), data = df)
 
+  # Store the models in the lists
+  poisson_model_long[[i]] <- poisson_model_long
+}
 
+poisson_model_long[[1]]
+
+# Combine the results into single dataframes
+results_poisson_model_long <- do.call(rbind, poisson_model_long)
+
+# Print the first few rows of the results dataframes
+cat("Results for the Poisson model:\n")
+print(head(results_poisson_model_long))
+
+# Save the results dataframes to CSV files
+write.csv(results_poisson_model_long, "results_poisson_model_long_results.csv", row.names = FALSE)
 
 
 
@@ -104,7 +130,7 @@ for (i in 1:1000) {
 
   # Fit the Poisson model
   poisson_model <- glm(hcv_test_rslt ~ offset(log(person_years)), family = poisson(link = "log"), data = df)
-  poisson_model2 <- glm(hcv_test_rslt ~ year + offset(log(person_years)), family = poisson(link = "log"), data = df)
+  poisson_model_long <- glm(hcv_test_rslt ~ year + offset(log(person_years)), family = poisson(link = "log"), data = df)
 
   # Store the models in the lists
   poisson_models[[i]] <- poisson_model
