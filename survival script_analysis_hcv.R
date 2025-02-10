@@ -75,61 +75,6 @@ for (i in 1:length(processed_dataframes)) {
 View(processed_dataframes_long[[1]])
 View(processed_dataframes_long[[length(processed_dataframes)]])
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# Function to make years long for Poisson regression
-expand_person_time <- function(df) {
-  df %>%
-    rowwise() %>%
-    mutate(years_followed = list(seq(from = as.Date(appointment_dte), 
-                                     to = as.Date(appointment_dte_lag), 
-                                     by = "year"))) %>%
-    unnest(years_followed) %>%
-    mutate(year = as.numeric(format(years_followed, "%Y")),
-           start_date = pmax(appointment_dte, as.Date(paste0(year, "-01-01"))),
-           end_date = pmin(appointment_dte_lag, as.Date(paste0(year, "-12-31")))) %>%
-    group_by(id, year) %>%
-    reframe(
-      hcv_test_rslt = ifelse(year == midpoint_year, 1, 0),  # Set hcv_test_rslt to 1 for midpoint_year, otherwise 0
-      person_years = as.numeric(difftime(end_date, start_date, units = "days")) / 365.25,
-      start_date = first(start_date),
-      end_date = first(end_date)
-    ) %>%
-    ungroup() %>%
-    filter(!is.na(person_years) & person_years > 0) %>%
-    complete(id, year = seq(min(year), max(year), by = 1), fill = list(hcv_test_rslt = 0, person_years = 0, start_date = NA, end_date = NA)) %>%
-    fill(start_date, end_date, .direction = "downup") %>%
-    filter(!is.na(start_date) & !is.na(end_date)) %>%
-    filter(start_date <= end_date)  # Ensure start_date is before or equal to end_date
-}
-
-# Initialize a list to store the expanded dataframes
-processed_dataframes_long <- list()
-
-# Apply the function to the first 10 dataframes in processed_dataframes and store the results
-for (i in 1:min(10, length(processed_dataframes))) {
-  cat("Expanding dataframe", i, "of", length(processed_dataframes), "\n")
-  processed_dataframes_long[[i]] <- expand_person_time(processed_dataframes[[i]])
-}
-
-View(processed_dataframes_long[[1]])
-View(processed_dataframes_long[[1000]])
-
 # Save the list of expanded dataframes to a file
 saveRDS(processed_dataframes_long, file = "processed_dataframes_long.rds")
 
