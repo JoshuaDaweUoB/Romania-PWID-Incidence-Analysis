@@ -4,18 +4,6 @@ pacman::p_load(tidyr, withr, lubridate, MASS, writexl, readxl, arsenal, survival
 ## set wd
 setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/Romania PWID/data")
 
-## baseline analysis
-
-# load analyses data
-romania_pwid_hcv_analysis <- read_excel("hcv_data_analysis.xlsx") 
-
-# baseline characteristics sex work
-romania_pwid_hcv_analysis <- romania_pwid_hcv_analysis %>%
-  group_by(id) %>%
-  mutate(id_seq = row_number())
-
-analysis_data_hcv_bl <- subset(romania_pwid_hcv_analysis, id_seq == 1)
-
 ## longitudinal analysis
 
 # analysis with packages
