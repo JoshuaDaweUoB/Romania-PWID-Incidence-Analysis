@@ -80,8 +80,9 @@ saveRDS(processed_dataframes_long, file = "processed_dataframes_long.rds")
 
 # yearly poisson regression
 
-# Initialize lists to store the models
+# Initialize lists to store the models and results
 poisson_models_long <- list()
+poisson_results_long <- list()
 
 # Loop through all 1000 processed dataframes
 for (i in 1:1000) {
@@ -92,17 +93,22 @@ for (i in 1:1000) {
   
   # Fit the Poisson model
   poisson_model_long <- glm(hcv_test_rslt ~ year + offset(log(time_at_risk)), family = poisson(link = "log"), data = df)
-
-  # Store the models in the lists
-  poisson_model_long[[i]] <- poisson_model_long
+  
+  # Store the model in the list
+  poisson_models_long[[i]] <- poisson_model_long
+  
+  # Extract the coefficients and their standard errors
+  coef_df <- as.data.frame(coef(summary(poisson_model_long)))
+  coef_df$iteration <- i
+  
+  # Store the results in the list
+  poisson_results_long[[i]] <- coef_df
 }
 
-poisson_model_long[[1]]
+# Combine the results into a single dataframe
+results_poisson_model_long <- do.call(rbind, poisson_results_long)
 
-# Combine the results into single dataframes
-results_poisson_model_long <- do.call(rbind, poisson_model_long)
-
-# Print the first few rows of the results dataframes
+# Print the first few rows of the results dataframe
 cat("Results for the Poisson model:\n")
 print(head(results_poisson_model_long))
 
