@@ -5,7 +5,7 @@ pacman::p_load(dplyr, tidyr, withr, lubridate, MASS, writexl, readxl, arsenal, s
 setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/Romania PWID/data")
 
 ## load data
-romania_pwid_raw <- read_excel("ARAS DATA IDU 2013-2022.xlsx") 
+romania_pwid_raw <- read_excel("ARAS DATA IDU 2013-2022.xlsx")
 
 ## baseline HCV cohort
 

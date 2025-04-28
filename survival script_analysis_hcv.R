@@ -6,16 +6,7 @@ setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/
 
 ## longitudinal analysis
 
-# analysis with packages
-
-# load the dataframes
-processed_dataframes <- readRDS("processed_dataframes.rds")
-
-# Verify that the dataframes are loaded correctly
-View(processed_dataframes[[1]])
-View(processed_dataframes[[1000]])
-
-# Define the function to process each dataframe
+# function to process each dataframe
 process_dataframe <- function(df) {
   # Rename the existing "year" column (if it exists) to avoid duplication
   if ("year" %in% colnames(df)) {
@@ -49,6 +40,10 @@ process_dataframe <- function(df) {
 # Load the dataframes
 processed_dataframes <- readRDS("processed_dataframes.rds")
 
+# Verify that the dataframes are loaded correctly
+View(processed_dataframes[[1]])
+View(processed_dataframes[[1000]])
+
 # Initialize a list to store the processed dataframes
 processed_dataframes_long <- list()
 
@@ -57,6 +52,9 @@ for (i in 1:length(processed_dataframes)) {
   cat("Processing dataframe", i, "of", length(processed_dataframes), "\n")
   processed_dataframes_long[[i]] <- process_dataframe(processed_dataframes[[i]])
 }
+
+# Save the list of long format processed dataframes to a file
+saveRDS(processed_dataframes_long, file = "processed_dataframes_long.rds")
 
 # View the first processed dataframe for verification
 View(processed_dataframes_long[[1]])
@@ -108,34 +106,9 @@ View(multiple_positive_rows)
 processed_dataframes <- readRDS("processed_dataframes.rds")
 processed_dataframes_long <- readRDS("processed_dataframes_long.rds")
 
-# Load the dataframes
-processed_dataframes_long <- readRDS("processed_dataframes_long.rds")
-
-# View the first dataframe for verification
-View(processed_dataframes_long[[1]])
-
-
 # view first datafarme
 View(processed_dataframes[[1]])
 View(processed_dataframes_long[[1]])
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 # create 1000 dataframes of summed yearly person-years and incident cases
 
@@ -185,6 +158,7 @@ for (i in 1:1000) {
   # Store the summed dataframe in the list
   summed_dataframes[[i]] <- summed_df
 }
+
 View(summed_dataframes[[1]])
 View(summed_dataframes[[1000]])
 
@@ -194,40 +168,12 @@ final_summed_df <- bind_rows(summed_dataframes[1:1000])
 # Print the final combined dataframe
 cat("Final combined dataframe:\n")
 print(head(final_summed_df))
+View(final_summed_df)
 
 # Create a new column hcv_test_qa which sums up all the hcv_test_20xx columns
 final_summed_df <- final_summed_df %>%
   mutate(hcv_test_qa = rowSums(across(starts_with("hcv_test_20")), na.rm = TRUE))
-# Function to calculate incidence rate and 95% CI per 100 person-years using negative binomial distribution
-calculate_incidence_rate_nb <- function(events, person_years) {
-  rate <- (events / person_years) * 100
-  se <- sqrt(events + (events^2 / person_years)) / person_years * 100
-  lower <- max(0, rate - 1.96 * se)
-  upper <- rate + 1.96 * se
-  return(c(rate, lower, upper))
-}
 
-# Calculate the overall incidence rate and 95% CI per 100 person-years for each row using negative binomial distribution
-final_summed_df <- final_summed_df %>%
-  rowwise() %>%
-  mutate(
-    overall_incidence_rate = calculate_incidence_rate_nb(hcv_test_rslt, person_years)[1],
-    overall_incidence_lower = calculate_incidence_rate_nb(hcv_test_rslt, person_years)[2],
-    overall_incidence_upper = calculate_incidence_rate_nb(hcv_test_rslt, person_years)[3]
-  ) %>%
-  ungroup()
-
-# Calculate yearly incidence rates and 95% CIs per 100 person-years for each row using negative binomial distribution
-for (year in 2013:2022) {
-  final_summed_df <- final_summed_df %>%
-    rowwise() %>%
-    mutate(
-      !!paste0("incidence_rate_", year) := calculate_incidence_rate_nb(get(paste0("hcv_test_", year)), get(paste0("X", year)))[1],
-      !!paste0("incidence_lower_", year) := calculate_incidence_rate_nb(get(paste0("hcv_test_", year)), get(paste0("X", year)))[2],
-      !!paste0("incidence_upper_", year) := calculate_incidence_rate_nb(get(paste0("hcv_test_", year)), get(paste0("X", year)))[3]
-    ) %>%
-    ungroup()
-}
 # View the final combined dataframe for QA
 View(final_summed_df)
 
@@ -246,12 +192,25 @@ yearly_lower_bounds <- sapply(2013:2022, function(year) {
 yearly_upper_bounds <- sapply(2013:2022, function(year) {
   quantile(final_summed_df[[paste0("incidence_rate_", year)]], 0.975, na.rm = TRUE)
 })
+median_hcv_infections <- sapply(2013:2022, function(year) {
+  median(final_summed_df[[paste0("hcv_test_", year)]], na.rm = TRUE)
+})
+median_person_years <- sapply(2013:2022, function(year) {
+  median(final_summed_df[[paste0("X", year)]], na.rm = TRUE)
+})
+
+# Calculate the overall median number of HCV infections and person-years
+overall_median_hcv_infections <- median(rowSums(final_summed_df[paste0("hcv_test_", 2013:2022)], na.rm = TRUE), na.rm = TRUE)
+overall_median_person_years <- median(rowSums(final_summed_df[paste0("X", 2013:2022)], na.rm = TRUE), na.rm = TRUE)
+
 # Create a new dataframe with the overall and yearly incidence rates and lower bounds
 results_df <- data.frame(
   Incidence_year = c("Overall incidence rate", as.character(2013:2022)),
   Incidence_rate = c(median_incidence_rate, yearly_medians),
   Lower_bound = c(lower_bound_overall, yearly_lower_bounds),
-  Upper_bound = c(upper_bound_overall, yearly_upper_bounds)
+  Upper_bound = c(upper_bound_overall, yearly_upper_bounds),
+  Median_HCV_infections = c(overall_median_hcv_infections, median_hcv_infections),  
+  Median_person_years = c(overall_median_person_years, median_person_years)  
 )
 
 # Print the results dataframe
@@ -259,125 +218,143 @@ cat("Results dataframe:\n")
 print(results_df)
 View(results_df)
 
-# yearly poisson regression
+# Save the overall incidence results to a CSV file
+write.csv(results_df, "overall_incidence_results_df.csv", row.names = TRUE)
 
-# Initialize lists to store the models and results
-poisson_models_long <- list()
-poisson_results_long <- list()
+
+# Create 1000 dataframes of summed two-year intervals for person-years and incident cases
+
+# Initialize an empty list to store the summed dataframes
+summed_dataframes_two_yearly <- list()
 
 # Loop through all 1000 processed dataframes
 for (i in 1:1000) {
-  cat("Fitting models for dataframe", i, "of", 1000, "\n")
+  cat("Processing summed dataframe for iteration", i, "of", 1000, "\n")
   
   # Get the processed dataframe for the current iteration
-  df <- processed_dataframes_long[[i]]
+  df <- processed_dataframes[[i]]
   
-  # Fit the Poisson model
-  poisson_model_long <- glm(hcv_test_rslt ~ year + offset(log(time_at_risk)), family = poisson(link = "log"), data = df)
+  # Check if the dataframe is NULL
+  if (is.null(df)) {
+    next
+  }
   
-  # Store the model in the list
-  poisson_models_long[[i]] <- poisson_model_long
-  
-  # Extract the coefficients and their standard errors
-  coef_df <- as.data.frame(coef(summary(poisson_model_long)))
-  coef_df$year <- rownames(coef_df)
-  coef_df$iteration <- i
-  
-  # Calculate the incidence rate and 95% confidence intervals for each year
-  coef_df <- coef_df %>%
-    mutate(
-      incidence_rate = exp(Estimate) * 100,
-      lower_ci = exp(Estimate - 1.96 * `Std. Error`) * 100,
-      upper_ci = exp(Estimate + 1.96 * `Std. Error`) * 100
+  # Sum the specified columns for two-year intervals
+  summed_df_two_yearly <- df %>%
+    summarise(
+      hcv_test_2013_2014 = sum(hcv_test_2013, hcv_test_2014, na.rm = TRUE),
+      hcv_test_2015_2016 = sum(hcv_test_2015, hcv_test_2016, na.rm = TRUE),
+      hcv_test_2017_2018 = sum(hcv_test_2017, hcv_test_2018, na.rm = TRUE),
+      hcv_test_2019_2020 = sum(hcv_test_2019, hcv_test_2020, na.rm = TRUE),
+      hcv_test_2021_2022 = sum(hcv_test_2021, hcv_test_2022, na.rm = TRUE),
+      person_years_2013_2014 = sum(X2013, X2014, na.rm = TRUE),
+      person_years_2015_2016 = sum(X2015, X2016, na.rm = TRUE),
+      person_years_2017_2018 = sum(X2017, X2018, na.rm = TRUE),
+      person_years_2019_2020 = sum(X2019, X2020, na.rm = TRUE),
+      person_years_2021_2022 = sum(X2021, X2022, na.rm = TRUE)
     )
   
-  # Store the results in the list
-  poisson_results_long[[i]] <- coef_df
+  # Store the summed dataframe in the list
+  summed_dataframes_two_yearly[[i]] <- summed_df_two_yearly
 }
 
-# Combine the results into a single dataframe
-results_poisson_model_long <- do.call(rbind, poisson_results_long)
+# Combine the dataframes from all iterations
+final_summed_df_two_yearly <- bind_rows(summed_dataframes_two_yearly)
 
-# Print the first few rows of the results dataframe
-cat("Results for the Poisson model:\n")
-print(head(results_poisson_model_long))
-
-# Save the results dataframes to CSV files
-write.csv(results_poisson_model_long, "results_poisson_model_long_results.csv", row.names = TRUE)
-
-## poisson modelling
-
-# Initialize a list to store the yearly incidence rates and confidence intervals
-yearly_incidence_results <- list()
-
-# Loop through all 1000 Poisson models
-for (i in 1:1000) {
-  # Get the Poisson model for the current iteration
-  poisson_model <- poisson_models_long[[i]]
-  
-  # Extract the coefficients and their standard errors for each year
-  coef_df <- as.data.frame(coef(summary(poisson_model)))
-  coef_df$year <- rownames(coef_df)
-  coef_df$iteration <- i
-  
-  # Calculate the incidence rate and 95% confidence intervals for each year
-  coef_df <- coef_df %>%
-    mutate(
-      incidence_rate = exp(Estimate) * 100,
-      lower_ci = exp(Estimate - 1.96 * `Std. Error`) * 100,
-      upper_ci = exp(Estimate + 1.96 * `Std. Error`) * 100
-    )
-  
-  # Store the results in the list
-  yearly_incidence_results[[i]] <- coef_df
-}
-
-# Save the yearly incidence results as 1000 dataframes
-for (i in 1:1000) {
-  write.csv(yearly_incidence_results[[i]], paste0("yearly_incidence_results_", i, ".csv"), row.names = TRUE)
-}
-
-# Combine the yearly incidence results into a single dataframe
-results_yearly_incidence <- do.call(rbind, yearly_incidence_results)
-
-# Filter the results to include only the specified years
-filtered_results_yearly_incidence <- results_yearly_incidence %>%
-  filter(year %in% c("year2014", "year2015", "year2016", "year2017", "year2018", "year2019", "year2020", "year2021", "year2022"))
-
-# Print the first few rows of the filtered yearly incidence results dataframe
-cat("Filtered yearly incidence results:\n")
-print(head(filtered_results_yearly_incidence))
-
-# Save the filtered yearly incidence results dataframe to a CSV file
-write.csv(filtered_results_yearly_incidence, "filtered_yearly_incidence_results.csv", row.names = TRUE)
-
-# Calculate the 2.5th, 97.5th, and median percentiles for each year
-uncertainty_intervals <- filtered_results_yearly_incidence %>%
-  group_by(year) %>%
-  summarize(
-    median_incidence_rate = median(incidence_rate),
-    lower_ci = quantile(incidence_rate, 0.025),
-    upper_ci = quantile(incidence_rate, 0.975)
+# Add incidence rate columns for each two-year interval
+final_summed_df_two_yearly <- final_summed_df_two_yearly %>%
+  mutate(
+    incidence_rate_2013_2014 = hcv_test_2013_2014 / person_years_2013_2014 * 100,
+    incidence_rate_2015_2016 = hcv_test_2015_2016 / person_years_2015_2016 * 100,
+    incidence_rate_2017_2018 = hcv_test_2017_2018 / person_years_2017_2018 * 100,
+    incidence_rate_2019_2020 = hcv_test_2019_2020 / person_years_2019_2020 * 100,
+    incidence_rate_2021_2022 = hcv_test_2021_2022 / person_years_2021_2022 * 100
   )
 
-# Print the first few rows of the uncertainty intervals dataframe
-cat("Uncertainty intervals for yearly incidence rates:\n")
-print(head(uncertainty_intervals))
+# Debugging: Check the updated column names
+cat("Updated columns in final_summed_df_two_yearly:\n")
+print(colnames(final_summed_df_two_yearly))
 
-# Save the uncertainty intervals dataframe to a CSV file
-write.csv(uncertainty_intervals, "uncertainty_intervals_yearly_incidence.csv", row.names = TRUE)
+# Print the final combined dataframe
+cat("Final combined dataframe:\n")
+print(head(final_summed_df_two_yearly))
+View(final_summed_df_two_yearly)
 
-# Calculate the overall incidence rate and 95% confidence intervals for the specified years
-overall_incidence_results <- filtered_results_yearly_incidence %>%
-  summarize(
-    median_incidence_rate = median(incidence_rate),
-    lower_ci = quantile(incidence_rate, 0.025),
-    upper_ci = quantile(incidence_rate, 0.975)
+# Debugging: Check the structure of final_summed_df_two_yearly
+cat("Columns in final_summed_df_two_yearly:\n")
+print(colnames(final_summed_df_two_yearly))
+
+# Calculate the median incidence rates for each two-year interval
+two_yearly_medians <- sapply(c("2013_2014", "2015_2016", "2017_2018", "2019_2020", "2021_2022"), function(interval) {
+  if (paste0("incidence_rate_", interval) %in% colnames(final_summed_df_two_yearly)) {
+    median(final_summed_df_two_yearly[[paste0("incidence_rate_", interval)]], na.rm = TRUE)
+  } else {
+    NA  # Return NA if the column does not exist
+  }
+})
+cat("Two-yearly medians:\n")
+print(two_yearly_medians)
+
+two_yearly_lower_bounds <- sapply(c("2013_2014", "2015_2016", "2017_2018", "2019_2020", "2021_2022"), function(interval) {
+  if (paste0("incidence_rate_", interval) %in% colnames(final_summed_df_two_yearly)) {
+    quantile(final_summed_df_two_yearly[[paste0("incidence_rate_", interval)]], 0.025, na.rm = TRUE)
+  } else {
+    NA
+  }
+})
+cat("Two-yearly lower bounds:\n")
+print(two_yearly_lower_bounds)
+
+two_yearly_upper_bounds <- sapply(c("2013_2014", "2015_2016", "2017_2018", "2019_2020", "2021_2022"), function(interval) {
+  if (paste0("incidence_rate_", interval) %in% colnames(final_summed_df_two_yearly)) {
+    quantile(final_summed_df_two_yearly[[paste0("incidence_rate_", interval)]], 0.975, na.rm = TRUE)
+  } else {
+    NA
+  }
+})
+cat("Two-yearly upper bounds:\n")
+print(two_yearly_upper_bounds)
+
+# Create a new dataframe with the two-year interval results
+results_df_two_yearly <- data.frame(
+  Interval = c("2013-2014", "2015-2016", "2017-2018", "2019-2020", "2021-2022"),
+  Incidence_rate = two_yearly_medians,
+  Lower_bound = two_yearly_lower_bounds,
+  Upper_bound = two_yearly_upper_bounds,
+  Median_HCV_infections = median_hcv_infections_two_yearly,
+  Median_person_years = median_person_years_two_yearly
+)
+
+# Print the results dataframe
+cat("Two-Year Interval Results dataframe:\n")
+print(results_df_two_yearly)
+View(results_df_two_yearly)
+
+# Save the two-year interval results to a CSV file
+write.csv(results_df_two_yearly, "results_df_two_yearly.csv", row.names = FALSE)
+
+# figure of incidence over time
+HCV_incidence_plot <- ggplot(results_df_two_yearly, aes(x = Interval, y = Incidence_rate)) +
+  geom_line(group = 1, color = "gray") + 
+  geom_point(shape = 18, size = 3, color = "gray") + 
+  geom_errorbar(aes(ymin = Lower_bound, ymax = Upper_bound), width = 0.2, color = "black") +  # Error bars
+  theme_minimal(base_size = 14) +  # Use a minimal theme
+  labs(
+    x = "Time Interval",
+    y = "Incidence Rate per 100 Person-Years"  
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),  
+    panel.grid.major = element_blank(),  # Remove major gridlines
+    panel.grid.minor = element_blank(),  # Remove minor gridlines
+    panel.background = element_rect(fill = "white", color = NA),  # Set panel background to white
+    plot.background = element_rect(fill = "white", color = NA)  # Set plot background to white
   )
 
-# Print the overall incidence results
-cat("Overall incidence results:\n")
-print(overall_incidence_results)
+# Save the plot as a PNG file in the "plots" folder
+ggsave("plots/HCV_incidence_plot.png", plot = HCV_incidence_plot, width = 8, height = 6, dpi = 300)
 
-# Save the overall incidence results to a CSV file
-write.csv(overall_incidence_results, "overall_incidence_results.csv", row.names = TRUE)
+
+
+
+
