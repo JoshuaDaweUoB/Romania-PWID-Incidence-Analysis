@@ -153,3 +153,107 @@ for (year in 2013:2022) {
     ) %>%
     ungroup()
 }
+
+
+# Load first dataframe
+midpoint_dataframe <- processed_dataframes[[1]]
+
+# Ensure `year` is numeric or character before using it in `case_when()`
+if (is.factor(midpoint_dataframe$year)) {
+  midpoint_dataframe <- midpoint_dataframe %>%
+    mutate(year = as.numeric(as.character(year)))  # Convert factor to numeric
+} else if (is.character(midpoint_dataframe$year)) {
+  midpoint_dataframe <- midpoint_dataframe %>%
+    mutate(year = as.numeric(year))  # Convert character to numeric
+}
+
+# Create new columns
+midpoint_dataframe <- midpoint_dataframe %>%
+  mutate(
+    midpoint_date = ifelse(
+      hcv_test_rslt == 1 | hcv_test_rslt == 0,  # Calculate midpoint for both 1 and 0
+      as.Date((as.numeric(appointment_dte) + as.numeric(appointment_dte_lag)) / 2, origin = "1970-01-01"),
+      NA  # Set to NA for rows where hcv_test_rslt is not 1 or 0
+    ),
+    midpoint_date = as.Date(midpoint_date),  # Ensure midpoint_date is formatted as a Date
+    midpoint_year = year(midpoint_date),  # Extract the year from midpoint_date
+    year = case_when(
+      !is.na(midpoint_year) ~ midpoint_year,  # Replace with midpoint_year if not NA
+      TRUE ~ year  # Otherwise, keep the original year
+    ),
+    person_years = ifelse(
+      hcv_test_rslt == 1, 
+      as.numeric(difftime(midpoint_date, appointment_dte, units = "days")) / 365.25,  # Use midpoint_date - appointment_dte when hcv_test_rslt == 1
+      as.numeric(difftime(appointment_dte_lag, appointment_dte, units = "days")) / 365.25  # Use appointment_dte_lag - appointment_dte otherwise
+    )
+  )
+
+# Ensure midpoint_date is explicitly formatted as a Date
+midpoint_dataframe <- midpoint_dataframe %>%
+  mutate(midpoint_date = as.Date(midpoint_date))
+
+# Keep only the specified columns in midpoint_dataframe
+midpoint_dataframe <- midpoint_dataframe %>%
+  select(
+    id, 
+    appointment_dte, 
+    appointment_dte_lag, 
+    hcv_test_rslt, 
+    random_infection_dtes, 
+    person_years, 
+    midpoint_year, 
+    midpoint_date, 
+    year
+  )
+
+# View the updated dataframe
+View(midpoint_dataframe)
+
+# Calculate total HCV infections and total person-years
+total_hcv_infections <- sum(midpoint_dataframe$hcv_test_rslt, na.rm = TRUE)
+total_person_years <- sum(midpoint_dataframe$person_years, na.rm = TRUE)
+
+# Calculate the overall incidence rate (per 100 person-years)
+overall_incidence_rate <- (total_hcv_infections / total_person_years) * 100
+
+# Calculate the 95% confidence intervals
+lower_bound <- overall_incidence_rate - 1.96 * sqrt(total_hcv_infections / (total_person_years^2)) * 100
+upper_bound <- overall_incidence_rate + 1.96 * sqrt(total_hcv_infections / (total_person_years^2)) * 100
+
+# Print the results
+cat("Total New Infections:", total_hcv_infections, "\n")
+cat("Total Person-Years:", total_person_years, "\n")
+cat("Overall HCV Incidence Rate (per 100 person-years):", overall_incidence_rate, "\n")
+cat("95% Confidence Interval: [", lower_bound, ", ", upper_bound, "]\n")
+
+# Define two-yearly intervals
+midpoint_dataframe <- midpoint_dataframe %>%
+  mutate(
+    two_year_interval = case_when(
+      year %in% c(2013, 2014) ~ "2013-2014",
+      year %in% c(2015, 2016) ~ "2015-2016",
+      year %in% c(2017, 2018) ~ "2017-2018",
+      year %in% c(2019, 2020) ~ "2019-2020",
+      year %in% c(2021, 2022) ~ "2021-2022",
+      TRUE ~ NA_character_  # Exclude years outside the range
+    )
+  )
+
+# Group by two-year intervals and calculate totals
+two_yearly_results <- midpoint_dataframe %>%
+  filter(!is.na(two_year_interval)) %>%  # Exclude rows without a valid interval
+  group_by(two_year_interval) %>%
+  summarise(
+    total_hcv_infections = sum(hcv_test_rslt, na.rm = TRUE),
+    total_person_years = sum(person_years, na.rm = TRUE),
+    incidence_rate = (total_hcv_infections / total_person_years) * 100,
+    lower_bound = (total_hcv_infections / total_person_years) * 100 - 
+                  1.96 * sqrt(total_hcv_infections / (total_person_years^2)) * 100,
+    upper_bound = (total_hcv_infections / total_person_years) * 100 + 
+                  1.96 * sqrt(total_hcv_infections / (total_person_years^2)) * 100
+  )
+
+# Print the results
+cat("Two-Yearly Interval Results:\n")
+print(two_yearly_results)
+View(two_yearly_results)

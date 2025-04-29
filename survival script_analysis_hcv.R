@@ -390,80 +390,28 @@ ggsave("plots/HCV_incidence_plot.png", plot = HCV_incidence_plot, width = 8, hei
 ## Cox regression analysis
 
 
-
-
 ## sensitivity analysis
 
 # Load first dataframe
- midpoint_dataframe <- processed_dataframes[[1]]
+midpoint_dataframe <- processed_dataframes_long[[1]]
 
-# Ensure `year` is numeric or character before using it in `case_when()`
-if (is.factor(midpoint_dataframe$year)) {
-  midpoint_dataframe <- midpoint_dataframe %>%
-    mutate(year = as.numeric(as.character(year)))  # Convert factor to numeric
-} else if (is.character(midpoint_dataframe$year)) {
-  midpoint_dataframe <- midpoint_dataframe %>%
-    mutate(year = as.numeric(year))  # Convert character to numeric
-}
-
-# Create new columns
+# replace midpoint year with NA if hcv test result is negative
 midpoint_dataframe <- midpoint_dataframe %>%
   mutate(
-    midpoint_date = ifelse(
-      hcv_test_rslt == 1, 
-      as.Date((as.numeric(appointment_dte) + as.numeric(appointment_dte_lag)) / 2, origin = "1970-01-01"),
-      NA  # Set to NA for rows where hcv_test_rslt is not 1
-    ),
-    midpoint_date = as.Date(midpoint_date),  # Ensure midpoint_date is formatted as a Date
-    midpoint_year = year(midpoint_date),  # Extract the year from midpoint_date
-    year = case_when(
-      !is.na(midpoint_year) ~ midpoint_year,  # Replace with midpoint_year if not NA
-      TRUE ~ year  # Otherwise, keep the original year
-    ),
-    person_years = ifelse(
-      !is.na(midpoint_date), 
-      as.numeric(difftime(midpoint_date, appointment_dte, units = "days")) / 365.25,  # Use midpoint_date if not missing
-      as.numeric(difftime(appointment_dte_lag, appointment_dte, units = "days")) / 365.25  # Otherwise, use appointment_dte_lag
-    )
+    midpoint_year = ifelse(hcv_test_rslt == 0, NA, midpoint_year)  # Replace midpoint_year with NA if hcv_test_rslt == 0
   )
 
-# Ensure midpoint_date is explicitly formatted as a Date
-midpoint_dataframe <- midpoint_dataframe %>%
-  mutate(midpoint_date = as.Date(midpoint_date))
-
-# Keep only the specified columns in midpoint_dataframe
-midpoint_dataframe <- midpoint_dataframe %>%
-  select(
-    id, 
-    appointment_dte, 
-    appointment_dte_lag, 
-    hcv_test_rslt, 
-    random_infection_dtes, 
-    person_years, 
-    midpoint_year, 
-    midpoint_date, 
-    year
-  )
+# Create a dataframe with rows for years 2013 to 2022 and calculate cases and years_at_risk
+yearly_data <- midpoint_dataframe %>%
+  group_by(year) %>%
+  summarise(
+    cases = sum(hcv_test_rslt, na.rm = TRUE),        # Sum of hcv_test_rslt for each year
+    years_at_risk = sum(time_at_risk, na.rm = TRUE)  # Sum of time_at_risk for each year
+  ) %>%
+  filter(year %in% 2013:2022)  # Ensure only rows for years 2013 to 2022 are included
 
 # View the updated dataframe
 View(midpoint_dataframe)
-
-# Calculate total HCV infections and total person-years
-total_hcv_infections <- sum(midpoint_dataframe$hcv_test_rslt, na.rm = TRUE)
-total_person_years <- sum(midpoint_dataframe$person_years, na.rm = TRUE)
-
-# Calculate the overall incidence rate (per 100 person-years)
-overall_incidence_rate <- (total_hcv_infections / total_person_years) * 100
-
-# Calculate the 95% confidence intervals
-lower_bound <- overall_incidence_rate - 1.96 * sqrt(total_hcv_infections / (total_person_years^2)) * 100
-upper_bound <- overall_incidence_rate + 1.96 * sqrt(total_hcv_infections / (total_person_years^2)) * 100
-
-# Print the results
-cat("Total New Infections:", total_hcv_infections, "\n")
-cat("Total Person-Years:", total_person_years, "\n")
-cat("Overall HCV Incidence Rate (per 100 person-years):", overall_incidence_rate, "\n")
-cat("95% Confidence Interval: [", lower_bound, ", ", upper_bound, "]\n")
 
 # Define two-yearly intervals
 midpoint_dataframe <- midpoint_dataframe %>%
@@ -483,33 +431,37 @@ two_yearly_results <- midpoint_dataframe %>%
   filter(!is.na(two_year_interval)) %>%  # Exclude rows without a valid interval
   group_by(two_year_interval) %>%
   summarise(
-    total_hcv_infections = sum(hcv_test_rslt, na.rm = TRUE),
-    total_person_years = sum(person_years, na.rm = TRUE),
-    incidence_rate = (total_hcv_infections / total_person_years) * 100,
+    total_hcv_infections = sum(hcv_test_rslt, na.rm = TRUE),  # Total cases
+    total_person_years = sum(time_at_risk, na.rm = TRUE),     # Total person-years
+    incidence_rate = (total_hcv_infections / total_person_years) * 100,  # Incidence rate per 100 person-years
     lower_bound = (total_hcv_infections / total_person_years) * 100 - 
-                  1.96 * sqrt(total_hcv_infections / (total_person_years^2)) * 100,
+                  1.96 * sqrt(total_hcv_infections / (total_person_years^2)) * 100,  # Lower 95% CI
     upper_bound = (total_hcv_infections / total_person_years) * 100 + 
-                  1.96 * sqrt(total_hcv_infections / (total_person_years^2)) * 100
+                  1.96 * sqrt(total_hcv_infections / (total_person_years^2)) * 100   # Upper 95% CI
   )
 
-# Print the results
-cat("Two-Yearly Interval Results:\n")
+# View the results
 print(two_yearly_results)
 View(two_yearly_results)
 
+# Save the two-yearly results to a CSV file
+write.csv(two_yearly_results, "two_yearly_results.csv", row.names = FALSE)
+
 # Create a plot for the two-yearly interval results
 HCV_incidence_plot_midpoint <- ggplot(two_yearly_results, aes(x = two_year_interval, y = incidence_rate)) +
-  geom_line(group = 1, color = "gray") + 
-  geom_point(shape = 18, size = 3, color = "gray") + 
-  geom_errorbar(aes(ymin = lower_bound, ymax = upper_bound), width = 0.2, color = "black") +  # Error bars
+  geom_line(group = 1, color = "gray", linewidth = 0.8, linetype = "solid") +  # Make the line gray and adjust thickness
+  geom_point(shape = 18, size = 4, color = "gray") +  # Make the diamonds (points) gray
+  geom_errorbar(aes(ymin = lower_bound, ymax = upper_bound), width = 0.1, color = "black", size = 0.8) +  # Adjust error bar width and size
   theme_minimal(base_size = 14) +  # Use a minimal theme
   labs(
-    x = "Two-yearly Interval",
-    y = "Incidence Rate per 100 Person-Years",
-    title = "HCV Incidence Rate by Two-Yearly Intervals (Midpoint)"
+    x = "Two-Yearly Interval",
+    y = "Incidence Rate (per 100 Person-Years)"
   ) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, max(two_yearly_results$upper_bound, na.rm = TRUE) * 1.1)) +  # Adjust y-axis limits
   theme(
-    axis.text.x = element_text(angle = 45, hjust = 1),  
+    axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis labels for better readability
+    axis.title.x = element_text(margin = margin(t = 10)),  # Add margin to x-axis title
+    axis.title.y = element_text(margin = margin(r = 10)),  # Add margin to y-axis title
     panel.grid.major = element_blank(),  # Remove major gridlines
     panel.grid.minor = element_blank(),  # Remove minor gridlines
     panel.background = element_rect(fill = "white", color = NA),  # Set panel background to white
@@ -517,6 +469,177 @@ HCV_incidence_plot_midpoint <- ggplot(two_yearly_results, aes(x = two_year_inter
   )
 
 # Save the plot as a PNG file in the "plots" folder with the suffix "_midpoint"
-ggsave("plots/HCV_incidence_plot_midpoint.png", plot = HCV_incidence_plot_midpoint, width = 8, height = 6, dpi = 300)
+ggsave("plots/HCV_incidence_plot_midpoint.png", plot = HCV_incidence_plot_midpoint, width = 10, height = 6, dpi = 300)
 
+## loop over 1000 iterations
 
+# Initialize a list to store the results for all 1000 dataframes
+all_two_yearly_results <- list()
+
+# Loop over all 1000 dataframes in the list
+for (i in 1:length(processed_dataframes_long)) {
+  cat("Processing dataframe", i, "of", length(processed_dataframes_long), "\n")
+  
+  # Load the current dataframe
+  midpoint_dataframe <- processed_dataframes_long[[i]]
+  
+  # Replace midpoint_year with NA if hcv_test_rslt is negative
+  midpoint_dataframe <- midpoint_dataframe %>%
+    mutate(
+      midpoint_year = ifelse(hcv_test_rslt == 0, NA, midpoint_year)  # Replace midpoint_year with NA if hcv_test_rslt == 0
+    )
+  
+  # Create a dataframe with rows for years 2013 to 2022 and calculate cases and years_at_risk
+  yearly_data <- midpoint_dataframe %>%
+    group_by(year) %>%
+    summarise(
+      cases = sum(hcv_test_rslt, na.rm = TRUE),        # Sum of hcv_test_rslt for each year
+      years_at_risk = sum(time_at_risk, na.rm = TRUE)  # Sum of time_at_risk for each year
+    ) %>%
+    filter(year %in% 2013:2022)  # Ensure only rows for years 2013 to 2022 are included
+  
+  # Define two-yearly intervals
+  midpoint_dataframe <- midpoint_dataframe %>%
+    mutate(
+      two_year_interval = case_when(
+        year %in% c(2013, 2014) ~ "2013-2014",
+        year %in% c(2015, 2016) ~ "2015-2016",
+        year %in% c(2017, 2018) ~ "2017-2018",
+        year %in% c(2019, 2020) ~ "2019-2020",
+        year %in% c(2021, 2022) ~ "2021-2022",
+        TRUE ~ NA_character_  # Exclude years outside the range
+      )
+    )
+  
+  # Group by two-year intervals and calculate totals
+  two_yearly_results <- midpoint_dataframe %>%
+    filter(!is.na(two_year_interval)) %>%  # Exclude rows without a valid interval
+    group_by(two_year_interval) %>%
+    summarise(
+      total_hcv_infections = sum(hcv_test_rslt, na.rm = TRUE),  # Total cases
+      total_person_years = sum(time_at_risk, na.rm = TRUE),     # Total person-years
+      incidence_rate = (total_hcv_infections / total_person_years) * 100,  # Incidence rate per 100 person-years
+      lower_bound = (total_hcv_infections / total_person_years) * 100 - 
+                    1.96 * sqrt(total_hcv_infections / (total_person_years^2)) * 100,  # Lower 95% CI
+      upper_bound = (total_hcv_infections / total_person_years) * 100 + 
+                    1.96 * sqrt(total_hcv_infections / (total_person_years^2)) * 100   # Upper 95% CI
+    )
+  
+  # Store the results in the list
+  all_two_yearly_results[[i]] <- two_yearly_results
+}
+
+# Combine all results into a single dataframe
+combined_two_yearly_results <- bind_rows(all_two_yearly_results, .id = "iteration")
+
+# Save the combined results to a CSV file
+write.csv(combined_two_yearly_results, "combined_two_yearly_results.csv", row.names = FALSE)
+
+# View the combined results
+View(combined_two_yearly_results)
+
+# Initialize a list to store the results for all 1000 dataframes
+all_two_yearly_results <- list()
+
+# Loop over all 1000 dataframes in the list
+for (i in 1:length(processed_dataframes_long)) {
+  cat("Processing dataframe", i, "of", length(processed_dataframes_long), "\n")
+  
+  # Load the current dataframe
+  midpoint_dataframe <- processed_dataframes_long[[i]]
+  
+  # Replace midpoint_year with NA if hcv_test_rslt is negative
+  midpoint_dataframe <- midpoint_dataframe %>%
+    mutate(
+      midpoint_year = ifelse(hcv_test_rslt == 0, NA, midpoint_year)  # Replace midpoint_year with NA if hcv_test_rslt == 0
+    )
+  
+  # Create a dataframe with rows for years 2013 to 2022 and calculate cases and years_at_risk
+  yearly_data <- midpoint_dataframe %>%
+    group_by(year) %>%
+    summarise(
+      cases = sum(hcv_test_rslt, na.rm = TRUE),        # Sum of hcv_test_rslt for each year
+      years_at_risk = sum(time_at_risk, na.rm = TRUE)  # Sum of time_at_risk for each year
+    ) %>%
+    filter(year %in% 2013:2022)  # Ensure only rows for years 2013 to 2022 are included
+  
+  # Define two-yearly intervals
+  midpoint_dataframe <- midpoint_dataframe %>%
+    mutate(
+      two_year_interval = case_when(
+        year %in% c(2013, 2014) ~ "2013-2014",
+        year %in% c(2015, 2016) ~ "2015-2016",
+        year %in% c(2017, 2018) ~ "2017-2018",
+        year %in% c(2019, 2020) ~ "2019-2020",
+        year %in% c(2021, 2022) ~ "2021-2022",
+        TRUE ~ NA_character_  # Exclude years outside the range
+      )
+    )
+  
+  # Group by two-year intervals and calculate totals
+  two_yearly_results <- midpoint_dataframe %>%
+    filter(!is.na(two_year_interval)) %>%  # Exclude rows without a valid interval
+    group_by(two_year_interval) %>%
+    summarise(
+      total_hcv_infections = sum(hcv_test_rslt, na.rm = TRUE),  # Total cases
+      total_person_years = sum(time_at_risk, na.rm = TRUE),     # Total person-years
+      incidence_rate = (total_hcv_infections / total_person_years) * 100,  # Incidence rate per 100 person-years
+      lower_bound = (total_hcv_infections / total_person_years) * 100 - 
+                    1.96 * sqrt(total_hcv_infections / (total_person_years^2)) * 100,  # Lower 95% CI
+      upper_bound = (total_hcv_infections / total_person_years) * 100 + 
+                    1.96 * sqrt(total_hcv_infections / (total_person_years^2)) * 100   # Upper 95% CI
+    )
+  
+  # Store the results in the list
+  all_two_yearly_results[[i]] <- two_yearly_results
+}
+
+# Combine all results into a single dataframe
+combined_two_yearly_results <- bind_rows(all_two_yearly_results, .id = "iteration")
+
+# Save the combined results to a CSV file
+write.csv(combined_two_yearly_results, "combined_two_yearly_results.csv", row.names = FALSE)
+
+# View the combined results
+View(combined_two_yearly_results)
+
+# Calculate incidence trends over time
+# Group by two-yearly intervals and calculate the median and percentiles
+incidence_trends <- combined_two_yearly_results %>%
+  group_by(two_year_interval) %>%
+  summarise(
+    median_incidence_rate = median(incidence_rate, na.rm = TRUE),  # Median incidence rate
+    lower_bound = quantile(incidence_rate, 0.025, na.rm = TRUE),  # 2.5th percentile
+    upper_bound = quantile(incidence_rate, 0.975, na.rm = TRUE)   # 97.5th percentile
+  )
+
+# View the incidence trends
+print(incidence_trends)
+View(incidence_trends)
+
+# Save the incidence trends to a CSV file
+write.csv(incidence_trends, "incidence_trends.csv", row.names = FALSE)
+
+# Create a plot for the incidence trends
+HCV_incidence_trends_plot <- ggplot(incidence_trends, aes(x = two_year_interval, y = median_incidence_rate)) +
+  geom_line(group = 1, color = "gray", linewidth = 0.8, linetype = "solid") +  # Solid gray line for trends
+  geom_point(shape = 18, size = 4, color = "gray") +  # Gray diamonds for points
+  geom_errorbar(aes(ymin = lower_bound, ymax = upper_bound), width = 0.1, color = "black", size = 0.8) +  # Black error bars
+  theme_minimal(base_size = 14) +  # Minimal theme
+  labs(
+    x = "Two-Yearly Interval",
+    y = "Median Incidence Rate (per 100 Person-Years)"
+  ) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, max(incidence_trends$upper_bound, na.rm = TRUE) * 1.1)) +  # Adjust y-axis limits
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis labels for better readability
+    axis.title.x = element_text(margin = margin(t = 10)),  # Add margin to x-axis title
+    axis.title.y = element_text(margin = margin(r = 10)),  # Add margin to y-axis title
+    panel.grid.major = element_blank(),  # Remove major gridlines
+    panel.grid.minor = element_blank(),  # Remove minor gridlines
+    panel.background = element_rect(fill = "white", color = NA),  # Set panel background to white
+    plot.background = element_rect(fill = "white", color = NA)  # Set plot background to white
+  )
+
+# Save the plot as a PNG file
+ggsave("plots/HCV_incidence_trends_plot.png", plot = HCV_incidence_trends_plot, width = 10, height = 6, dpi = 300)
