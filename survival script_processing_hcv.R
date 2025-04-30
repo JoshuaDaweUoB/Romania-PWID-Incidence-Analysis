@@ -122,33 +122,41 @@ invalid_rows <- romania_pwid_hcv_test %>%
   filter(appointment_dte_lag < appointment_dte)
 cat("Number of rows where appointment_dte_lag is less than appointment_dte:", nrow(invalid_rows), "\n")
 
+# Save testing data
+write.csv(romania_pwid_hcv_test, "romania_pwid_hcv_test.csv")
+
 #### random-point sampling with 1000 iterations approach ####
 
-# generate random infection dates
-romania_pwid_hcv_test_iterations <- romania_pwid_hcv_test %>%
-  filter(hcv_test_rslt == 1) %>%
+# Ensure appointment_dte and appointment_dte_lag are in Date format
+midpoint_dataframe <- midpoint_dataframe %>%
+  mutate(
+    appointment_dte = as.Date(appointment_dte, format = "%Y-%m-%d"),
+    appointment_dte_lag = as.Date(appointment_dte_lag, format = "%Y-%m-%d")
+  )
+
+# Calculate person-years for each year of observation
+person_years_df <- midpoint_dataframe %>%
   rowwise() %>%
   mutate(
-    # generate 1000 random infection dates
-    random_infection_dtes = list(
-      as.Date(
-        runif(1000,
-              min = as.numeric(appointment_dte),
-              max = as.numeric(appointment_dte_lag)),
-        origin = "1970-01-01"
-      )
-    )
+    start_year = year(appointment_dte),
+    end_year = year(appointment_dte_lag),
+    start_date = appointment_dte,
+    end_date = appointment_dte_lag
   ) %>%
-  unnest_longer(random_infection_dtes) %>%
-  group_by(id) %>%
-  mutate(
-    iteration = rep(1:1000, each = n() / 1000),  # create iteration groups
-    days_risk = as.numeric(random_infection_dtes - appointment_dte),  # days at risk
-    person_years = days_risk / 365.25,  # convert days at risk to person-years
-    midpoint_year = year(random_infection_dtes),  # extract the year from random_infection_dtes
-    appointment_dte_lag = random_infection_dtes  # set appointment_dte_lag to random_infection_dtes
-  ) %>%
+  do({
+    data <- .
+    years <- seq(data$start_year, data$end_year)
+    person_years <- sapply(years, function(year) {
+      start <- max(as.Date(paste0(year, "-01-01")), data$start_date)
+      end <- min(as.Date(paste0(year, "-12-31")), data$end_date)
+      as.numeric(difftime(end, start, units = "days")) / 365.25
+    })
+    names(person_years) <- years
+    data.frame(t(person_years))
+  }) %>%
   ungroup()
+
+View(person_years_df)
 
 # check for rows where appointment_dte_lag is less than appointment_dte
 invalid_rows <- romania_pwid_hcv_test_iterations %>%

@@ -1,57 +1,70 @@
+## load packages
+pacman::p_load(dplyr, tidyr, withr, lubridate, MASS, writexl, readxl, arsenal, survival, broom, ggplot2)
 
-## sensitivity analysis
-midpoint_dataframe <- processed_dataframes[[1]]
+## set wd
+setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/Romania PWID/data")
 
-# Keep only the specified columns in midpoint_dataframe
+## load data
+midpoint_dataframe <- read.csv("romania_pwid_hcv_test.csv")
+View(midpoint_dataframe)##
+
+# Ensure appointment_dte and appointment_dte_lag are in Date format
 midpoint_dataframe <- midpoint_dataframe %>%
-  select(
-    id, 
-    appointment_dte, 
-    appointment_dte_lag, 
-    hcv_test_rslt, 
-    time_at_risk
+  mutate(
+    appointment_dte = as.Date(appointment_dte, format = "%Y-%m-%d"),
+    appointment_dte_lag = as.Date(appointment_dte_lag, format = "%Y-%m-%d")
   )
 
-  person_years_df <- midpoint_dataframe %>%
-    rowwise() %>%
-    mutate(
-      start_year = year(appointment_dte),
-      end_year = year(appointment_dte_lag),
-      start_date = appointment_dte,
-      end_date = appointment_dte_lag
-    ) %>%
-    do({
-      data <- .
-      years <- seq(data$start_year, data$end_year)
-      person_years <- sapply(years, function(year) {
-        start <- max(as.Date(paste0(year, "-01-01")), data$start_date)
-        end <- min(as.Date(paste0(year, "-12-31")), data$end_date)
-        as.numeric(difftime(end, start, units = "days")) / 365.25
-      })
-      names(person_years) <- years
-      data.frame(t(person_years))
-    }) %>%
-    ungroup()
+# Calculate person-years for each year of observation
+person_years_df <- midpoint_dataframe %>%
+  rowwise() %>%
+  mutate(
+    start_year = year(appointment_dte),
+    end_year = year(appointment_dte_lag),
+    start_date = appointment_dte,
+    end_date = appointment_dte_lag
+  ) %>%
+  do({
+    data <- .
+    years <- seq(data$start_year, data$end_year)
+    person_years <- sapply(years, function(year) {
+      start <- max(as.Date(paste0(year, "-01-01")), data$start_date)
+      end <- min(as.Date(paste0(year, "-12-31")), data$end_date)
+      as.numeric(difftime(end, start, units = "days")) / 365.25
+    })
+    names(person_years) <- years
+    data.frame(t(person_years))
+  }) %>%
+  ungroup()
 
-  # Merge the person_years_df with the original dataframe
-  midpoint_dataframe <- bind_cols(midpoint_dataframe, person_years_df)
+# View the resulting dataframe
+View(person_years_df)
 
-  # Ensure all required columns are present
-  for (year in required_years) {
-    column_name <- paste0("hcv_test_", year)
-    if (!(column_name %in% names(df))) {
-      midpoint_dataframe[[column_name]] <- 0
-    }
+# Merge the person_years_df with the original dataframe
+midpoint_dataframe <- bind_cols(midpoint_dataframe, person_years_df)
+
+# Ensure all required columns are present
+for (year in required_years) {
+  column_name <- paste0("hcv_test_", year)
+  if (!(column_name %in% names(midpoint_dataframe))) {
+    midpoint_dataframe[[column_name]] <- 0  # Initialize the column with 0
   }
+}
+
+# Populate the hcv_test_20xx columns based on midpoint_year and hcv_test_rslt
+for (year in required_years) {
+  column_name <- paste0("hcv_test_", year)
+  midpoint_dataframe[[column_name]] <- ifelse(
+    midpoint_dataframe$midpoint_year == year & midpoint_dataframe$hcv_test_rslt == 1,
+    1,
+    midpoint_dataframe[[column_name]]  # Retain the existing value if the condition is not met
+  )
+}
+
+# View the updated dataframe
+View(midpoint_dataframe)
   
-  # Populate the hcv_test_20xx columns based on midpoint_year and hcv_test_rslt
-  for (year in required_years) {
-    column_name <- paste0("hcv_test_", year)
-    midpoint_dataframe[[column_name]] <- ifelse(midpoint_dataframe$midpoint_year == year & df$hcv_test_rslt == 1, 1, midpoint_dataframe[[column_name]])
-  }
-  
-  # Ensure all required person-year columns are present
-  for (year in required_years) {
+# Ensure all required person-year columns are presentfor (year in required_years) {
     if (!(as.character(year) %in% names(df))) {
       df[[as.character(year)]] <- 0
     }
