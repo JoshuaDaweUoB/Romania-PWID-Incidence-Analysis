@@ -304,3 +304,52 @@ ggplot(df, aes(x = person_years)) +
 # Save the list of processed dataframes to a file
 saveRDS(processed_dataframes, file = "processed_dataframes.rds")
 
+# function to process each dataframe
+process_dataframe <- function(df) {
+  # Rename the existing "year" column (if it exists) to avoid duplication
+  if ("year" %in% colnames(df)) {
+    df <- df %>%
+      rename(existing_year = year)
+  }
+  
+  # Reshape the columns X2013 to X2022 to long format
+  df_long <- df %>%
+    pivot_longer(cols = starts_with("X"), 
+                 names_to = "year", 
+                 names_prefix = "X", 
+                 values_to = "time_at_risk") %>%
+    filter(!is.na(time_at_risk))  # Remove rows where time_at_risk is NA
+  
+  # Recode hcv_test_rslt to 0 when it is invalid, NA, or year does not equal midpoint_year
+  df_long <- df_long %>%
+    mutate(hcv_test_rslt = ifelse(is.na(hcv_test_rslt) | !is.numeric(hcv_test_rslt) | year != midpoint_year, 0, hcv_test_rslt))
+  
+  # Keep only the specified columns
+  df_long <- df_long %>%
+    dplyr::select(id, hcv_test_rslt, appointment_dte, appointment_dte_lag, year, midpoint_year, time_at_risk)
+  
+  # Sort by id and then by year
+  df_long <- df_long %>%
+    arrange(id, year)
+  
+  return(df_long)
+}
+
+# Load the dataframes
+processed_dataframes <- readRDS("processed_dataframes.rds")
+
+# Verify that the dataframes are loaded correctly
+View(processed_dataframes[[1]])
+View(processed_dataframes[[1000]])
+
+# Initialize a list to store the processed dataframes
+processed_dataframes_long <- list()
+
+# Loop over all dataframes in processed_dataframes
+for (i in 1:length(processed_dataframes)) {
+  cat("Processing dataframe", i, "of", length(processed_dataframes), "\n")
+  processed_dataframes_long[[i]] <- process_dataframe(processed_dataframes[[i]])
+}
+
+# Save the list of long format processed dataframes to a file
+saveRDS(processed_dataframes_long, file = "processed_dataframes_long.rds")
