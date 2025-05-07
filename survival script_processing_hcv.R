@@ -12,7 +12,7 @@ romania_pwid_raw <- read_excel("ARAS DATA IDU 2013-2022.xlsx")
 # remove rows where hiv test result is missing
 romania_pwid_hcv <- romania_pwid_raw[!is.na(romania_pwid_raw$hcv_test_rslt), ]
 
-# remove rows where hiv test result is indeterminate 
+# remove rows where hiv test result is indeterminate
 romania_pwid_hcv <- romania_pwid_hcv %>%
   filter(!hcv_test_rslt == 3)
 
@@ -26,7 +26,7 @@ romania_pwid_hcv <- ungroup(romania_pwid_hcv)
 
 # HCV test results by visit
 romania_pwid_hcv_summary <- table(romania_pwid_hcv$hcv_test_rslt)
-print(romania_pwid_hcv_summary) 
+print(romania_pwid_hcv_summary)
 
 # remove IDs where hcv positive at baseline
 ids_to_remove <- romania_pwid_hcv %>%
@@ -60,29 +60,32 @@ romania_pwid_hcv <- romania_pwid_hcv %>%
 romania_pwid_hcv_summary <- table(romania_pwid_hcv$hcv_test_seq, romania_pwid_hcv$hcv_test_rslt)
 print(romania_pwid_hcv_summary) 
 
-# remove hcv tests after first positive
+# Remove HCV tests after the first positive
 romania_pwid_hcv <- romania_pwid_hcv %>%
   group_by(id) %>%
-  mutate(first_hcv_positive_dte = ifelse(hcv_test_rslt == 2, appointment_dte, NA)) %>%
-  mutate(first_hcv_positive_dte = min(first_hcv_positive_dte, na.rm = TRUE)) %>%
+  mutate(
+    first_hcv_positive_dte = ifelse(hcv_test_rslt == 2, appointment_dte, NA),
+    first_hcv_positive_dte = if (all(is.na(first_hcv_positive_dte))) NA else min(first_hcv_positive_dte, na.rm = TRUE)
+  ) %>%
   ungroup()
 
+# Filter rows to keep only those before or on the first positive test date
 romania_pwid_hcv <- romania_pwid_hcv %>%
   filter(is.na(first_hcv_positive_dte) | appointment_dte <= first_hcv_positive_dte)
 
 # HCV test results by visit
 romania_pwid_hcv_summary <- table(romania_pwid_hcv$hcv_test_seq, romania_pwid_hcv$hcv_test_rslt)
-print(romania_pwid_hcv_summary) 
+print(romania_pwid_hcv_summary)
 
-# create hcv testing dataframe 
+# create hcv testing dataframe
 romania_pwid_hcv_test <- subset(romania_pwid_hcv, select = c(id, appointment_dte, hcv_test_seq, hcv_test_rslt)) 
 
 # create lag of appointment dates and hcv tests
 romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
-  arrange(id, hcv_test_seq) %>%  
+  arrange(id, hcv_test_seq) %>%
   group_by(id) %>%
   mutate(appointment_dte_lag = lead(appointment_dte),
-         hcv_test_rslt_lag = lead(hcv_test_rslt)) 
+         hcv_test_rslt_lag = lead(hcv_test_rslt))
 
 # remove empty rows
 romania_pwid_hcv_test <- romania_pwid_hcv_test[!is.na(romania_pwid_hcv_test$hcv_test_rslt_lag), ]
@@ -125,38 +128,54 @@ cat("Number of rows where appointment_dte_lag is less than appointment_dte:", nr
 # Save testing data
 write.csv(romania_pwid_hcv_test, "romania_pwid_hcv_test.csv")
 
+# Subset romania_pwid_hcv to include only rows that match id and appointment_dte in romania_pwid_hcv_test
+romania_pwid_hcv_subset <- romania_pwid_hcv %>%
+  semi_join(romania_pwid_hcv_test, by = c("id", "appointment_dte", "hcv_test_seq"))
+
+# Create the exposure dataframe
+romania_pwid_hcv_exposure <- romania_pwid_hcv_subset %>%
+  select(id, appointment_dte, hcv_test_seq, gender, dob, sex_work_current, msm_current, homeless_current, ethnic_roma)
+
+# Ensure dob is in the correct Date format
+romania_pwid_hcv_exposure <- romania_pwid_hcv_exposure %>%
+  mutate(dob = as.Date(dob, format = "%d/%m/%Y"))  # Convert dob to Date format
+
+# Generate age in years using dob and appointment_dte
+romania_pwid_hcv_exposure <- romania_pwid_hcv_exposure %>%
+  mutate(age_years = as.numeric(difftime(appointment_dte, dob, units = "days")) / 365.25)
+
 #### random-point sampling with 1000 iterations approach ####
 
-# Ensure appointment_dte and appointment_dte_lag are in Date format
-midpoint_dataframe <- midpoint_dataframe %>%
-  mutate(
-    appointment_dte = as.Date(appointment_dte, format = "%Y-%m-%d"),
-    appointment_dte_lag = as.Date(appointment_dte_lag, format = "%Y-%m-%d")
-  )
-
-# Calculate person-years for each year of observation
-person_years_df <- midpoint_dataframe %>%
+# generate random infection dates
+romania_pwid_hcv_test_iterations <- romania_pwid_hcv_test %>%
+  filter(hcv_test_rslt == 1) %>%
   rowwise() %>%
   mutate(
-    start_year = year(appointment_dte),
-    end_year = year(appointment_dte_lag),
-    start_date = appointment_dte,
-    end_date = appointment_dte_lag
+    # generate 1000 random infection dates
+    random_infection_dtes = list(
+      as.Date(
+        runif(1000,
+              min = as.numeric(appointment_dte),
+              max = as.numeric(appointment_dte_lag)),
+        origin = "1970-01-01"
+      )
+    )
   ) %>%
-  do({
-    data <- .
-    years <- seq(data$start_year, data$end_year)
-    person_years <- sapply(years, function(year) {
-      start <- max(as.Date(paste0(year, "-01-01")), data$start_date)
-      end <- min(as.Date(paste0(year, "-12-31")), data$end_date)
-      as.numeric(difftime(end, start, units = "days")) / 365.25
-    })
-    names(person_years) <- years
-    data.frame(t(person_years))
-  }) %>%
+  unnest_longer(random_infection_dtes) %>%
+  group_by(id) %>%
+  mutate(
+    iteration = rep(1:1000, each = n() / 1000),  # create iteration groups
+    days_risk = as.numeric(random_infection_dtes - appointment_dte),  # days at risk
+    person_years = days_risk / 365.25,  # convert days at risk to person-years
+    midpoint_year = year(random_infection_dtes),  # extract the year from random_infection_dtes
+    appointment_dte_lag = random_infection_dtes  # set appointment_dte_lag to random_infection_dtes
+  ) %>%
   ungroup()
 
-View(person_years_df)
+# merge
+romania_pwid_hcv_test <- left_join(romania_pwid_hcv_exposure, romania_pwid_hcv_test, by = c("id", "appointment_dte", "hcv_test_seq"))
+
+View(romania_pwid_hcv_test)
 
 # check for rows where appointment_dte_lag is less than appointment_dte
 invalid_rows <- romania_pwid_hcv_test_iterations %>%
@@ -179,11 +198,6 @@ romania_pwid_hcv_test_negatives <- romania_pwid_hcv_test %>%
     midpoint_year = NA
   )
 
-# QA for rows where appointment_dte_lag is less than appointment_dte
-invalid_rows <- romania_pwid_hcv_test_negatives %>%
-  filter(appointment_dte_lag < appointment_dte)
-cat("Number of rows where appointment_dte_lag is less than appointment_dte:", nrow(invalid_rows), "\n")
-
 # append the negatives dataframe to each of the 1000 dataframes
 split_dataframes <- lapply(split_dataframes, function(df) {
   combined_df <- rbind(df, romania_pwid_hcv_test_negatives)
@@ -200,7 +214,7 @@ processed_dataframes <- list()
 # Define the years for which we need to create columns
 required_years <- 2013:2022
 
-# Loop through the first 10 iterations
+# Loop through the first 1000 iterations
 for (i in 1:1000) {
   cat("Processing iteration", i, "of", 1000, "\n")
   
@@ -361,3 +375,6 @@ for (i in 1:length(processed_dataframes)) {
 
 # Save the list of long format processed dataframes to a file
 saveRDS(processed_dataframes_long, file = "processed_dataframes_long.rds")
+
+
+

@@ -203,5 +203,3 @@ upper_bound <- incidence_rate + (1.96 * standard_error)
 # Print the results
 cat("Incidence Rate:", incidence_rate, "per 100 person-years\n")
 cat("95% CI: [", lower_bound, ", ", upper_bound, "]\n")
-
-
