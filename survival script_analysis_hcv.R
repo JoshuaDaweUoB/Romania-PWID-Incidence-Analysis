@@ -124,6 +124,15 @@ View(final_summed_df)
 final_summed_df <- final_summed_df %>%
   mutate(hcv_test_qa = rowSums(across(starts_with("hcv_test_20")), na.rm = TRUE))
 
+# Add columns for overall incidence rate and 95% confidence interval
+final_summed_df <- final_summed_df %>%
+  mutate(
+    overall_incidence_rate = (hcv_test_rslt / person_years) * 100,  # Incidence rate per 100 person-years
+    standard_error = sqrt(hcv_test_rslt) / person_years * 100,      # Standard error of the incidence rate
+    lower_bound_95CI = overall_incidence_rate - (1.96 * standard_error),  # Lower bound of 95% CI
+    upper_bound_95CI = overall_incidence_rate + (1.96 * standard_error)   # Upper bound of 95% CI
+  )
+
 # View the final combined dataframe for QA
 View(final_summed_df)
 
@@ -193,8 +202,8 @@ results_df <- data.frame(
   Incidence_rate = c(median_incidence_rate, yearly_medians),
   Lower_bound = c(lower_bound_overall, yearly_lower_bounds),
   Upper_bound = c(upper_bound_overall, yearly_upper_bounds),
-  Median_HCV_infections = c(overall_median_hcv_infections, median_hcv_infections),  
-  Median_person_years = c(overall_median_person_years, median_person_years)  
+  Median_HCV_infections = c(overall_median_hcv_infections, median_hcv_infections),
+  Median_person_years = c(overall_median_person_years, median_person_years)
 )
 
 # Print the results dataframe
@@ -445,6 +454,9 @@ for (i in 1:length(processed_dataframes_long)) {
       )
     )
   
+
+
+
   # Group by two-year intervals and calculate totals
   two_yearly_results <- midpoint_dataframe %>%
     filter(!is.na(two_year_interval)) %>%  # Exclude rows without a valid interval

@@ -6,7 +6,6 @@ setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/
 
 ## load data
 midpoint_dataframe <- read.csv("romania_pwid_hcv_test.csv")
-View(midpoint_dataframe)##
 
 # Ensure appointment_dte and appointment_dte_lag are in Date format
 midpoint_dataframe <- midpoint_dataframe %>%
@@ -37,11 +36,25 @@ person_years_df <- midpoint_dataframe %>%
   }) %>%
   ungroup()
 
-# View the resulting dataframe
-View(person_years_df)
-
 # Merge the person_years_df with the original dataframe
 midpoint_dataframe <- bind_cols(midpoint_dataframe, person_years_df)
+
+# Ensure appointment_dte and appointment_dte_lag are in Date format
+midpoint_dataframe <- midpoint_dataframe %>%
+  mutate(
+    appointment_dte = as.Date(appointment_dte, format = "%Y-%m-%d"),
+    appointment_dte_lag = as.Date(appointment_dte_lag, format = "%Y-%m-%d")
+  )
+
+# Create the midpoint_year column
+midpoint_dataframe <- midpoint_dataframe %>%
+  mutate(
+    midpoint_date = as.Date((as.numeric(appointment_dte) + as.numeric(appointment_dte_lag)) / 2, origin = "1970-01-01"),
+    midpoint_year = year(midpoint_date)  # Extract the year from the midpoint_date
+  )
+
+# Define the years for which we need to create columns
+required_years <- 2013:2022
 
 # Ensure all required columns are present
 for (year in required_years) {
@@ -55,7 +68,9 @@ for (year in required_years) {
 for (year in required_years) {
   column_name <- paste0("hcv_test_", year)
   midpoint_dataframe[[column_name]] <- ifelse(
-    midpoint_dataframe$midpoint_year == year & midpoint_dataframe$hcv_test_rslt == 1,
+    !is.na(midpoint_dataframe$midpoint_year) &  # Ensure midpoint_year is not NA
+    midpoint_dataframe$midpoint_year == year & 
+    midpoint_dataframe$hcv_test_rslt == 1,
     1,
     midpoint_dataframe[[column_name]]  # Retain the existing value if the condition is not met
   )
@@ -63,33 +78,54 @@ for (year in required_years) {
 
 # View the updated dataframe
 View(midpoint_dataframe)
-  
-# Ensure all required person-year columns are presentfor (year in required_years) {
-    if (!(as.character(year) %in% names(df))) {
-      df[[as.character(year)]] <- 0
-    }
-  }
 
+# Create a new column 'year' by extracting the year from 'appointment_dte_lag'
+midpoint_dataframe <- midpoint_dataframe %>%
+  mutate(year = as.numeric(format(appointment_dte_lag, "%Y")))
 
+# Convert 'year' to a factor to treat it as a categorical variable
+midpoint_dataframe$year <- as.factor(midpoint_dataframe$year)
 
+# View the updated dataframe
+View(midpoint_dataframe)
 
-# View the reshaped dataframe
-View(midpoint_dataframe_long)
+# Rename the existing "year" column (if it exists) to avoid duplication
+if ("year" %in% colnames(midpoint_dataframe)) {
+  midpoint_dataframe <- midpoint_dataframe %>%
+    rename(existing_year = year)
+}
 
-# Replace midpoint_year with NA if hcv_test_rslt is negative
+# Reshape the columns X2013 to X2022 to long format
+midpoint_dataframe_long <- midpoint_dataframe %>%
+  pivot_longer(
+    cols = starts_with("X"), 
+    names_to = "year", 
+    names_prefix = "X", 
+    values_to = "time_at_risk"
+  ) %>%
+  filter(!is.na(time_at_risk))  # Remove rows where time_at_risk is NA
+
+# Drop rows where the 'year' column is empty or contains only spaces
+midpoint_dataframe_long <- midpoint_dataframe_long %>%
+  filter(year != "" & !is.na(year))  # Remove rows where 'year' is empty or NA
+
+# Recode hcv_test_rslt to 0 if the 'year' column does not equal the 'midpoint_year' column
 midpoint_dataframe_long <- midpoint_dataframe_long %>%
   mutate(
-    midpoint_year = ifelse(hcv_test_rslt == 0, NA, midpoint_year)  # Replace midpoint_year with NA if hcv_test_rslt == 0
+    hcv_test_rslt = ifelse(year == midpoint_year, hcv_test_rslt, 0)
   )
 
-# Create a dataframe with rows for years 2013 to 2022 and calculate cases and years_at_risk
-yearly_data <- midpoint_dataframe_long %>%
-  group_by(year) %>%
-  summarise(
-    cases = sum(hcv_test_rslt, na.rm = TRUE),        # Sum of hcv_test_rslt for each year
-    years_at_risk = sum(time_at_risk, na.rm = TRUE)  # Sum of time_at_risk for each year
-  ) %>%
-  filter(year %in% 2013:2022)  # Ensure only rows for years 2013 to 2022 are included
+# Recode the hcv_test_rslt_20xx columns to 0 if the column 'year' does not equal 'midpoint_year'
+for (year in required_years) {
+  column_name <- paste0("hcv_test_", year)
+  if (column_name %in% colnames(midpoint_dataframe_long)) {
+    midpoint_dataframe_long[[column_name]] <- ifelse(
+      midpoint_dataframe_long$year == midpoint_dataframe_long$midpoint_year,
+      midpoint_dataframe_long[[column_name]],  # Retain the existing value if the condition is met
+      0  # Set to 0 if the condition is not met
+    )
+  }
+}
 
 # View the updated dataframe
 View(midpoint_dataframe_long)
@@ -108,7 +144,7 @@ midpoint_dataframe_long <- midpoint_dataframe_long %>%
   )
 
 # Group by two-year intervals and calculate totals
-two_yearly_results <- midpoint_dataframe_long %>%
+two_yearly_results_midpoint <- midpoint_dataframe_long %>%
   filter(!is.na(two_year_interval)) %>%  # Exclude rows without a valid interval
   group_by(two_year_interval) %>%
   summarise(
@@ -122,14 +158,14 @@ two_yearly_results <- midpoint_dataframe_long %>%
   )
 
 # View the results
-print(two_yearly_results)
-View(two_yearly_results)
+print(two_yearly_results_midpoint)
+View(two_yearly_results_midpoint)
 
 # Save the two-yearly results to a CSV file
-write.csv(two_yearly_results, "two_yearly_results_long.csv", row.names = FALSE)
+write.csv(two_yearly_results_midpoint, "two_yearly_results_long_midpoint.csv", row.names = FALSE)
 
 # Create a plot for the two-yearly interval results
-HCV_incidence_plot_midpoint <- ggplot(two_yearly_results, aes(x = two_year_interval, y = incidence_rate)) +
+HCV_incidence_plot_midpoint <- ggplot(two_yearly_results_midpoint, aes(x = two_year_interval, y = incidence_rate)) +
   geom_line(group = 1, color = "gray", linewidth = 0.8, linetype = "solid") +  # Make the line gray and adjust thickness
   geom_point(shape = 18, size = 4, color = "gray") +  # Make the diamonds (points) gray
   geom_errorbar(aes(ymin = lower_bound, ymax = upper_bound), width = 0.1, color = "black", size = 0.8) +  # Adjust error bar width and size
@@ -152,7 +188,20 @@ HCV_incidence_plot_midpoint <- ggplot(two_yearly_results, aes(x = two_year_inter
 # Save the plot as a PNG file in the "plots" folder with the suffix "_midpoint"
 ggsave("plots/HCV_incidence_plot_midpoint_long.png", plot = HCV_incidence_plot_midpoint, width = 10, height = 6, dpi = 300)
 
+# Calculate the incidence rate
+cases <- 94
+person_years <- 766.4
+incidence_rate <- (cases / person_years) * 100
 
+# Calculate the standard error
+standard_error <- sqrt(cases) / person_years * 100
 
+# Calculate the 95% confidence interval
+lower_bound <- incidence_rate - (1.96 * standard_error)
+upper_bound <- incidence_rate + (1.96 * standard_error)
+
+# Print the results
+cat("Incidence Rate:", incidence_rate, "per 100 person-years\n")
+cat("95% CI: [", lower_bound, ", ", upper_bound, "]\n")
 
 
