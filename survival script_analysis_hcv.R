@@ -418,8 +418,481 @@ View(combined_two_yearly_results)
 all_two_yearly_results <- list()
 
 ## cox regression analysis
+View(processed_dataframes[[1]])
 
+# Initialize a list to store the results for all 1000 dataframes
+all_cox_results <- list()
 
+# Loop over all 1000 dataframes in processed_dataframes
+for (i in 1:length(processed_dataframes)) {
+  cat("Processing Cox regression for dataframe", i, "of", length(processed_dataframes), "\n")
+  
+  # Load the current dataframe
+  df <- processed_dataframes[[i]]
+  
+  # Ensure the dataframe has no missing values for the variables of interest
+  df <- df %>%
+    filter(!is.na(hcv_test_rslt) & !is.na(gender) & !is.na(dob) & 
+             !is.na(sex_work_current) & !is.na(msm_current) & 
+             !is.na(homeless_current) & !is.na(ethnic_roma))
+  
+  # Create a survival object
+  surv_obj <- Surv(time = df$days_risk, event = df$hcv_test_rslt)
+  
+  # List of exposures
+  exposures <- c("gender", "age_years", "sex_work_current", "homeless_current", "ethnic_roma")
+  
+  # Run univariate Cox regressions
+  univariate_results <- lapply(exposures, function(var) {
+    formula <- as.formula(paste("surv_obj ~", var))
+    tryCatch(
+      coxph(formula, data = df),
+      error = function(e) {
+        cat("Error in Cox regression for", var, ":", e$message, "\n")
+        NULL
+      }
+    )
+  })
+  
+  # Run a multivariable Cox regression adjusting for all exposures
+  multivariable_formula <- as.formula(paste("surv_obj ~", paste(exposures, collapse = " + ")))
+  multivariable_cox <- tryCatch(
+    coxph(multivariable_formula, data = df),
+    error = function(e) {
+      cat("Error in multivariable Cox regression:", e$message, "\n")
+      NULL
+    }
+  )
+  
+  # Store the results for this dataframe
+  all_cox_results[[i]] <- list(
+    univariate = univariate_results,
+    multivariable = multivariable_cox
+  )
+}
+
+# Save the results to a file
+saveRDS(all_cox_results, file = "all_cox_results.rds")
+
+# Example: Print the summary of the multivariable Cox regression for the first dataframe
+cat("\nMultivariable Cox regression for dataframe 1:\n")
+print(summary(all_cox_results[[1]]$multivariable))
+
+# Initialize an empty list to store the results for each iteration
+cox_point_estimates <- list()
+lower_95CI_list <- list()
+upper_95CI_list <- list()
+
+# Loop through all 1000 iterations in all_cox_results
+for (i in 1:length(all_cox_results)) {
+  # Extract the univariate Cox regression results for this iteration
+  univariate_results <- all_cox_results[[i]]$univariate
+  
+  # Extract the hazard ratios (HR) and confidence intervals for each exposure
+  hr_values <- sapply(univariate_results, function(model) {
+    if (!is.null(model)) {
+      exp(coef(model))  # Extract and exponentiate the coefficient to get the HR
+    } else {
+      NA  # If the model is NULL, return NA
+    }
+  })
+  
+  lower_95CI <- sapply(univariate_results, function(model) {
+    if (!is.null(model)) {
+      exp(confint(model)[, 1])  # Extract and exponentiate the lower bound of the CI
+    } else {
+      NA
+    }
+  })
+  
+  upper_95CI <- sapply(univariate_results, function(model) {
+    if (!is.null(model)) {
+      exp(confint(model)[, 2])  # Extract and exponentiate the upper bound of the CI
+    } else {
+      NA
+    }
+  })
+  
+  # Extract the multivariable Cox regression results for this iteration
+  multivariable_model <- all_cox_results[[i]]$multivariable
+  
+  # Extract the hazard ratios (HR) and confidence intervals for the multivariable model
+  multivariable_hr <- if (!is.null(multivariable_model)) {
+    exp(coef(multivariable_model))  # Extract and exponentiate the coefficients
+  } else {
+    rep(NA, length(hr_values))  # If the model is NULL, return NA for all exposures
+  }
+  
+  multivariable_lower_95CI <- if (!is.null(multivariable_model)) {
+    exp(confint(multivariable_model)[, 1])  # Extract and exponentiate the lower bound of the CI
+  } else {
+    rep(NA, length(hr_values))
+  }
+  
+  multivariable_upper_95CI <- if (!is.null(multivariable_model)) {
+    exp(confint(multivariable_model)[, 2])  # Extract and exponentiate the upper bound of the CI
+  } else {
+    rep(NA, length(hr_values))
+  }
+  
+  # Combine the univariate and multivariable HRs and CIs into a single row
+  combined_row <- c(univariate_hr = hr_values, multivariable_hr = multivariable_hr)
+  lower_95CI_row <- c(univariate_lower_95CI = lower_95CI, multivariable_lower_95CI = multivariable_lower_95CI)
+  upper_95CI_row <- c(univariate_upper_95CI = upper_95CI, multivariable_upper_95CI = multivariable_upper_95CI)
+  
+  # Store the rows in the respective lists
+  cox_point_estimates[[i]] <- combined_row
+  lower_95CI_list[[i]] <- lower_95CI_row
+  upper_95CI_list[[i]] <- upper_95CI_row
+}
+
+# Combine all rows into dataframes
+cox_point_estimates_df <- do.call(rbind, cox_point_estimates)
+lower_95CI_df <- do.call(rbind, lower_95CI_list)
+upper_95CI_df <- do.call(rbind, upper_95CI_list)
+
+# Assign column names to the dataframes
+first_non_null <- all_cox_results[[which(!sapply(all_cox_results, is.null))[1]]]
+colnames(cox_point_estimates_df) <- c(
+  paste0("univariate_", names(first_non_null$univariate)),
+  paste0("multivariable_", names(first_non_null$multivariable$coefficients))
+)
+colnames(lower_95CI_df) <- colnames(cox_point_estimates_df)
+colnames(upper_95CI_df) <- colnames(cox_point_estimates_df)
+
+# Calculate the median, lower, and upper bounds for the hazard ratios and confidence intervals
+summary_table <- data.frame(
+  Variable = colnames(cox_point_estimates_df),
+  Median_HR = apply(cox_point_estimates_df, 2, median, na.rm = TRUE),
+  Lower_95CI = apply(lower_95CI_df, 2, median, na.rm = TRUE),
+  Upper_95CI = apply(upper_95CI_df, 2, median, na.rm = TRUE)
+)
+
+# View the resulting summary table
+View(summary_table)
+
+# Save the summary table to a CSV file
+write.csv(summary_table, "cox_regression_summary_table.csv", row.names = FALSE)
+
+## analysis among males
+
+# Initialize a list to store the results for all 1000 dataframes
+all_cox_results_male <- list()
+
+# Loop over all 1000 dataframes in processed_dataframes
+for (i in 1:length(processed_dataframes)) {
+  cat("Processing Cox regression for dataframe", i, "of", length(processed_dataframes), "\n")
+  
+  # Load the current dataframe
+  df <- processed_dataframes[[i]]
+  
+  # Filter the dataframe to include only rows where gender == 0 (male)
+  df <- df %>%
+    filter(gender == 0 & 
+           !is.na(hcv_test_rslt) & !is.na(dob) & 
+           !is.na(sex_work_current) & !is.na(msm_current) & 
+           !is.na(homeless_current) & !is.na(ethnic_roma))
+  
+  # Check if the filtered dataframe is empty
+  if (nrow(df) == 0) {
+    cat("Filtered dataframe is empty for iteration", i, ". Skipping.\n")
+    all_cox_results_male[[i]] <- NULL
+    next
+  }
+  
+  # Create a survival object
+  surv_obj_male <- Surv(time = df$days_risk, event = df$hcv_test_rslt)
+  
+  # List of exposures
+  exposures_male <- c("age_years", "sex_work_current", "msm_current", "homeless_current", "ethnic_roma")
+  
+  # Run univariate Cox regressions
+  univariate_results_male <- lapply(exposures_male, function(var) {
+    formula <- as.formula(paste("surv_obj_male ~", var))
+    tryCatch(
+      coxph(formula, data = df),
+      error = function(e) {
+        cat("Error in Cox regression for", var, ":", e$message, "\n")
+        NULL
+      }
+    )
+  })
+  
+  # Run a multivariable Cox regression adjusting for all exposures
+  multivariable_formula_male <- as.formula(paste("surv_obj_male ~", paste(exposures_male, collapse = " + ")))
+  multivariable_cox_male <- tryCatch(
+    coxph(multivariable_formula_male, data = df),
+    error = function(e) {
+      cat("Error in multivariable Cox regression:", e$message, "\n")
+      NULL
+    }
+  )
+  
+  # Store the results for this dataframe
+  all_cox_results_male[[i]] <- list(
+    univariate_male = univariate_results_male,
+    multivariable_male = multivariable_cox_male
+  )
+}
+
+# Save the results to a file
+saveRDS(all_cox_results_male, file = "all_cox_results_male.rds")
+
+# Initialize an empty list to store the results for each iteration
+cox_point_estimates_male <- list()
+lower_95CI_list_male <- list()
+upper_95CI_list_male <- list()
+
+# Loop through all 1000 iterations in all_cox_results_male
+for (i in 1:length(all_cox_results_male)) {
+  # Extract the univariate Cox regression results for this iteration
+  univariate_results_male <- all_cox_results_male[[i]]$univariate_male
+  
+  # Extract the hazard ratios (HR) and confidence intervals for each exposure
+  hr_values_male <- sapply(univariate_results_male, function(model) {
+    if (!is.null(model)) {
+      exp(coef(model))  # Extract and exponentiate the coefficient to get the HR
+    } else {
+      NA  # If the model is NULL, return NA
+    }
+  })
+  
+  lower_95CI_male <- sapply(univariate_results_male, function(model) {
+    if (!is.null(model)) {
+      exp(confint(model)[, 1])  # Extract and exponentiate the lower bound of the CI
+    } else {
+      NA
+    }
+  })
+  
+  upper_95CI_male <- sapply(univariate_results_male, function(model) {
+    if (!is.null(model)) {
+      exp(confint(model)[, 2])  # Extract and exponentiate the upper bound of the CI
+    } else {
+      NA
+    }
+  })
+  
+  # Extract the multivariable Cox regression results for this iteration
+  multivariable_model_male <- all_cox_results_male[[i]]$multivariable_male
+  
+  # Extract the hazard ratios (HR) and confidence intervals for the multivariable model
+  multivariable_hr_male <- if (!is.null(multivariable_model_male)) {
+    exp(coef(multivariable_model_male))  # Extract and exponentiate the coefficients
+  } else {
+    rep(NA, length(hr_values_male))  # If the model is NULL, return NA for all exposures
+  }
+  
+  multivariable_lower_95CI_male <- if (!is.null(multivariable_model_male)) {
+    exp(confint(multivariable_model_male)[, 1])  # Extract and exponentiate the lower bound of the CI
+  } else {
+    rep(NA, length(hr_values_male))
+  }
+  
+  multivariable_upper_95CI_male <- if (!is.null(multivariable_model_male)) {
+    exp(confint(multivariable_model_male)[, 2])  # Extract and exponentiate the upper bound of the CI
+  } else {
+    rep(NA, length(hr_values_male))
+  }
+  
+  # Combine the univariate and multivariable HRs and CIs into a single row
+  combined_row_male <- c(univariate_hr_male = hr_values_male, multivariable_hr_male = multivariable_hr_male)
+  lower_95CI_row_male <- c(univariate_lower_95CI_male = lower_95CI_male, multivariable_lower_95CI_male = multivariable_lower_95CI_male)
+  upper_95CI_row_male <- c(univariate_upper_95CI_male = upper_95CI_male, multivariable_upper_95CI_male = multivariable_upper_95CI_male)
+  
+  # Store the rows in the respective lists
+  cox_point_estimates_male[[i]] <- combined_row_male
+  lower_95CI_list_male[[i]] <- lower_95CI_row_male
+  upper_95CI_list_male[[i]] <- upper_95CI_row_male
+}
+
+# Combine all rows into dataframes
+cox_point_estimates_df_male <- do.call(rbind, cox_point_estimates_male)
+lower_95CI_df_male <- do.call(rbind, lower_95CI_list_male)
+upper_95CI_df_male <- do.call(rbind, upper_95CI_list_male)
+
+# Assign column names to the dataframes
+first_non_null_male <- all_cox_results_male[[which(!sapply(all_cox_results_male, is.null))[1]]]
+colnames(cox_point_estimates_df_male) <- c(
+  paste0("univariate_", names(first_non_null_male$univariate_male)),
+  paste0("multivariable_", names(first_non_null_male$multivariable_male$coefficients))
+)
+colnames(lower_95CI_df_male) <- colnames(cox_point_estimates_df_male)
+colnames(upper_95CI_df_male) <- colnames(cox_point_estimates_df_male)
+
+# Calculate the median, lower, and upper bounds for the hazard ratios and confidence intervals
+summary_table_male <- data.frame(
+  Variable = colnames(cox_point_estimates_df_male),
+  Median_HR = apply(cox_point_estimates_df_male, 2, median, na.rm = TRUE),
+  Lower_95CI = apply(lower_95CI_df_male, 2, median, na.rm = TRUE),
+  Upper_95CI = apply(upper_95CI_df_male, 2, median, na.rm = TRUE)
+)
+
+# View the resulting summary table
+View(summary_table_male)
+
+# Save the summary table to a CSV file
+write.csv(summary_table_male, "cox_regression_summary_table_male.csv", row.names = FALSE)
+
+## Analysis among females
+
+# Initialize a list to store the results for all 1000 dataframes
+all_cox_results_female <- list()
+
+# Loop over all 1000 dataframes in processed_dataframes
+for (i in 1:length(processed_dataframes)) {
+  cat("Processing Cox regression for dataframe", i, "of", length(processed_dataframes), "\n")
+  
+  # Load the current dataframe
+  df <- processed_dataframes[[i]]
+  
+  # Filter the dataframe to include only rows where gender == 1 (female)
+  df <- df %>%
+    filter(gender == 1 & 
+           !is.na(hcv_test_rslt) & !is.na(dob) & 
+           !is.na(sex_work_current) & 
+           !is.na(homeless_current) & !is.na(ethnic_roma))
+  
+  # Check if the filtered dataframe is empty
+  if (nrow(df) == 0) {
+    cat("Filtered dataframe is empty for iteration", i, ". Skipping.\n")
+    all_cox_results_female[[i]] <- NULL
+    next
+  }
+  
+  # Create a survival object
+  surv_obj_female <- Surv(time = df$days_risk, event = df$hcv_test_rslt)
+  
+  # List of exposures (excluding msm_current)
+  exposures_female <- c("age_years", "sex_work_current", "homeless_current", "ethnic_roma")
+  
+  # Run univariate Cox regressions
+  univariate_results_female <- lapply(exposures_female, function(var) {
+    formula <- as.formula(paste("surv_obj_female ~", var))
+    tryCatch(
+      coxph(formula, data = df),
+      error = function(e) {
+        cat("Error in Cox regression for", var, ":", e$message, "\n")
+        NULL
+      }
+    )
+  })
+  
+  # Run a multivariable Cox regression adjusting for all exposures
+  multivariable_formula_female <- as.formula(paste("surv_obj_female ~", paste(exposures_female, collapse = " + ")))
+  multivariable_cox_female <- tryCatch(
+    coxph(multivariable_formula_female, data = df),
+    error = function(e) {
+      cat("Error in multivariable Cox regression:", e$message, "\n")
+      NULL
+    }
+  )
+  
+  # Store the results for this dataframe
+  all_cox_results_female[[i]] <- list(
+    univariate_female = univariate_results_female,
+    multivariable_female = multivariable_cox_female
+  )
+}
+
+# Save the results to a file
+saveRDS(all_cox_results_female, file = "all_cox_results_female.rds")
+
+# Initialize an empty list to store the results for each iteration
+cox_point_estimates_female <- list()
+lower_95CI_list_female <- list()
+upper_95CI_list_female <- list()
+
+# Loop through all 1000 iterations in all_cox_results_female
+for (i in 1:length(all_cox_results_female)) {
+  # Extract the univariate Cox regression results for this iteration
+  univariate_results_female <- all_cox_results_female[[i]]$univariate_female
+  
+  # Extract the hazard ratios (HR) and confidence intervals for each exposure
+  hr_values_female <- sapply(univariate_results_female, function(model) {
+    if (!is.null(model)) {
+      exp(coef(model))  # Extract and exponentiate the coefficient to get the HR
+    } else {
+      NA  # If the model is NULL, return NA
+    }
+  })
+  
+  lower_95CI_female <- sapply(univariate_results_female, function(model) {
+    if (!is.null(model)) {
+      exp(confint(model)[, 1])  # Extract and exponentiate the lower bound of the CI
+    } else {
+      NA
+    }
+  })
+  
+  upper_95CI_female <- sapply(univariate_results_female, function(model) {
+    if (!is.null(model)) {
+      exp(confint(model)[, 2])  # Extract and exponentiate the upper bound of the CI
+    } else {
+      NA
+    }
+  })
+  
+  # Extract the multivariable Cox regression results for this iteration
+  multivariable_model_female <- all_cox_results_female[[i]]$multivariable_female
+  
+  # Extract the hazard ratios (HR) and confidence intervals for the multivariable model
+  multivariable_hr_female <- if (!is.null(multivariable_model_female)) {
+    exp(coef(multivariable_model_female))  # Extract and exponentiate the coefficients
+  } else {
+    rep(NA, length(hr_values_female))  # If the model is NULL, return NA for all exposures
+  }
+  
+  multivariable_lower_95CI_female <- if (!is.null(multivariable_model_female)) {
+    exp(confint(multivariable_model_female)[, 1])  # Extract and exponentiate the lower bound of the CI
+  } else {
+    rep(NA, length(hr_values_female))
+  }
+  
+  multivariable_upper_95CI_female <- if (!is.null(multivariable_model_female)) {
+    exp(confint(multivariable_model_female)[, 2])  # Extract and exponentiate the upper bound of the CI
+  } else {
+    rep(NA, length(hr_values_female))
+  }
+  
+  # Combine the univariate and multivariable HRs and CIs into a single row
+  combined_row_female <- c(univariate_hr_female = hr_values_female, multivariable_hr_female = multivariable_hr_female)
+  lower_95CI_row_female <- c(univariate_lower_95CI_female = lower_95CI_female, multivariable_lower_95CI_female = multivariable_lower_95CI_female)
+  upper_95CI_row_female <- c(univariate_upper_95CI_female = upper_95CI_female, multivariable_upper_95CI_female = multivariable_upper_95CI_female)
+  
+  # Store the rows in the respective lists
+  cox_point_estimates_female[[i]] <- combined_row_female
+  lower_95CI_list_female[[i]] <- lower_95CI_row_female
+  upper_95CI_list_female[[i]] <- upper_95CI_row_female
+}
+
+# Combine all rows into dataframes
+cox_point_estimates_df_female <- do.call(rbind, cox_point_estimates_female)
+lower_95CI_df_female <- do.call(rbind, lower_95CI_list_female)
+upper_95CI_df_female <- do.call(rbind, upper_95CI_list_female)
+
+# Assign column names to the dataframes
+first_non_null_female <- all_cox_results_female[[which(!sapply(all_cox_results_female, is.null))[1]]]
+colnames(cox_point_estimates_df_female) <- c(
+  paste0("univariate_", names(first_non_null_female$univariate_female)),
+  paste0("multivariable_", names(first_non_null_female$multivariable_female$coefficients))
+)
+colnames(lower_95CI_df_female) <- colnames(cox_point_estimates_df_female)
+colnames(upper_95CI_df_female) <- colnames(cox_point_estimates_df_female)
+
+# Calculate the median, lower, and upper bounds for the hazard ratios and confidence intervals
+summary_table_female <- data.frame(
+  Variable = colnames(cox_point_estimates_df_female),
+  Median_HR = apply(cox_point_estimates_df_female, 2, median, na.rm = TRUE),
+  Lower_95CI = apply(lower_95CI_df_female, 2, median, na.rm = TRUE),
+  Upper_95CI = apply(upper_95CI_df_female, 2, median, na.rm = TRUE)
+)
+
+# View the resulting summary table
+View(summary_table_female)
+
+# Save the summary table to a CSV file
+write.csv(summary_table_female, "cox_regression_summary_table_female.csv", row.names = FALSE)
 
 # same analysis on long dataframes
 

@@ -128,22 +128,6 @@ cat("Number of rows where appointment_dte_lag is less than appointment_dte:", nr
 # Save testing data
 write.csv(romania_pwid_hcv_test, "romania_pwid_hcv_test.csv")
 
-# Subset romania_pwid_hcv to include only rows that match id and appointment_dte in romania_pwid_hcv_test
-romania_pwid_hcv_subset <- romania_pwid_hcv %>%
-  semi_join(romania_pwid_hcv_test, by = c("id", "appointment_dte", "hcv_test_seq"))
-
-# Create the exposure dataframe
-romania_pwid_hcv_exposure <- romania_pwid_hcv_subset %>%
-  select(id, appointment_dte, hcv_test_seq, gender, dob, sex_work_current, msm_current, homeless_current, ethnic_roma)
-
-# Ensure dob is in the correct Date format
-romania_pwid_hcv_exposure <- romania_pwid_hcv_exposure %>%
-  mutate(dob = as.Date(dob, format = "%d/%m/%Y"))  # Convert dob to Date format
-
-# Generate age in years using dob and appointment_dte
-romania_pwid_hcv_exposure <- romania_pwid_hcv_exposure %>%
-  mutate(age_years = as.numeric(difftime(appointment_dte, dob, units = "days")) / 365.25)
-
 #### random-point sampling with 1000 iterations approach ####
 
 # generate random infection dates
@@ -171,9 +155,6 @@ romania_pwid_hcv_test_iterations <- romania_pwid_hcv_test %>%
     appointment_dte_lag = random_infection_dtes  # set appointment_dte_lag to random_infection_dtes
   ) %>%
   ungroup()
-
-# merge
-romania_pwid_hcv_test <- left_join(romania_pwid_hcv_exposure, romania_pwid_hcv_test, by = c("id", "appointment_dte", "hcv_test_seq"))
 
 View(romania_pwid_hcv_test)
 
@@ -326,6 +307,65 @@ ggplot(df, aes(x = person_years)) +
 # Save the list of processed dataframes to a file
 saveRDS(processed_dataframes, file = "processed_dataframes.rds")
 
+# Subset romania_pwid_hcv to include only rows that match id, appointment_dte, and hcv_test_seq in romania_pwid_hcv_test
+romania_pwid_hcv_exposure <- romania_pwid_hcv %>%
+  semi_join(romania_pwid_hcv_test, by = c("id", "appointment_dte", "hcv_test_seq")) %>%
+  dplyr::select(id, appointment_dte, hcv_test_seq, gender, dob, sex_work_current,
+                msm_current, homeless_current, ethnic_roma) %>%
+  mutate(
+    sex_work_current = ifelse(is.na(sex_work_current), 0, sex_work_current),
+    msm_current = ifelse(is.na(msm_current), 0, msm_current),
+    homeless_current = ifelse(is.na(homeless_current), 0, homeless_current),
+    ethnic_roma = ifelse(is.na(ethnic_roma), 0, ethnic_roma),
+    msm_current = ifelse(is.na(msm_current), 0, msm_current),
+    gender = ifelse(gender == 2, 0, gender)  # Recode gender from 2 to 0
+  )
+
+# Ensure dob is in the correct Date format
+romania_pwid_hcv_exposure <- romania_pwid_hcv_exposure %>%
+  mutate(dob = as.Date(dob, format = "%d/%m/%Y"))  # Convert dob to Date format
+
+# Generate age in years using dob and appointment_dte
+romania_pwid_hcv_exposure <- romania_pwid_hcv_exposure %>%
+  mutate(age_years = as.numeric(difftime(appointment_dte, dob, units = "days")) / 365.25)
+
+# merge with processed dataframes 
+
+# Define a function to merge exposure data with processed dataframes
+merge_with_exposure <- function(processed_dataframes, romania_pwid_hcv_exposure) {
+  # Ensure romania_pwid_hcv_exposure has no duplicate rows for id and appointment_dte
+  romania_pwid_hcv_exposure <- romania_pwid_hcv_exposure %>%
+    distinct(id, appointment_dte, .keep_all = TRUE)
+  
+  # Merge romania_pwid_hcv_exposure with each dataframe in processed_dataframes
+  processed_dataframes <- lapply(processed_dataframes, function(df) {
+    # Ensure df has no duplicate rows for id and appointment_dte
+    df <- df %>%
+      distinct(id, appointment_dte, .keep_all = TRUE)
+    
+    # Perform the left join with romania_pwid_hcv_exposure
+    merged_df <- left_join(df, romania_pwid_hcv_exposure, by = c("id", "appointment_dte"))
+    
+    # Remove duplicate columns (keep the columns from romania_pwid_hcv_exposure)
+    merged_df <- merged_df %>%
+      dplyr::select(-ends_with(".x")) %>%  # Remove columns ending with ".x" (from the original dataframe)
+      rename_with(~ gsub("\\.y$", "", .), ends_with(".y"))  # Remove ".y" suffix from merged columns
+    
+    return(merged_df)
+  })
+  
+  return(processed_dataframes)
+}
+
+# Example usage of the function
+processed_dataframes <- merge_with_exposure(processed_dataframes, romania_pwid_hcv_exposure)
+
+# Save the updated processed_dataframes to a file
+saveRDS(processed_dataframes, file = "processed_dataframes.rds")
+
+# View the first merged dataframe for QA
+View(processed_dataframes[[1]])
+
 # function to process each dataframe
 process_dataframe <- function(df) {
   # Rename the existing "year" column (if it exists) to avoid duplication
@@ -376,5 +416,119 @@ for (i in 1:length(processed_dataframes)) {
 # Save the list of long format processed dataframes to a file
 saveRDS(processed_dataframes_long, file = "processed_dataframes_long.rds")
 
+## Baseline prevalence and predictors of HCV infection
 
+# Load data
+baseline_analysis_hcv <- romania_pwid_raw
 
+# remove rows where hiv test result is missing
+baseline_analysis_hcv <- baseline_analysis_hcv[!is.na(baseline_analysis_hcv$hcv_test_rslt), ]
+
+# remove rows where hiv test result is indeterminate
+baseline_analysis_hcv <- baseline_analysis_hcv %>%
+  filter(!hcv_test_rslt == 3)
+
+# create sequence of visits by ID
+baseline_analysis_hcv <- baseline_analysis_hcv %>%
+  group_by(id) %>%
+  arrange(id, appointment_dte) %>%
+  mutate(appointment_seq = row_number())
+
+baseline_analysis_hcv <- ungroup(baseline_analysis_hcv)
+
+# Keep only rows where appointment_seq equals 1
+baseline_analysis_hcv <- baseline_analysis_hcv %>%
+  filter(appointment_seq == 1)
+
+# Subset romania_pwid_hcv to include only rows that match id, appointment_dte, and hcv_test_seq in romania_pwid_hcv_test
+baseline_analysis_hcv <- baseline_analysis_hcv %>%
+  mutate(
+    sex_work_current = ifelse(is.na(sex_work_current), 0, sex_work_current),
+    msm_current = ifelse(is.na(msm_current), 0, msm_current),
+    homeless_current = ifelse(is.na(homeless_current), 0, homeless_current),
+    ethnic_roma = ifelse(is.na(ethnic_roma), 0, ethnic_roma),
+    gender = ifelse(gender == 2, 0, gender) 
+  )
+
+# Ensure dob is in the correct Date format
+baseline_analysis_hcv <- baseline_analysis_hcv %>%
+  mutate(dob = as.Date(dob, format = "%d/%m/%Y")) %>%
+  mutate(age_years = as.numeric(difftime(appointment_dte, dob, units = "days")) / 365.25) %>%
+  mutate(age_bin = ifelse(age_years < 30, 0, 1))
+
+# change test results to 0 and 1
+baseline_analysis_hcv <- baseline_analysis_hcv %>%
+  mutate(hcv_test_rslt = case_when(
+    hcv_test_rslt == 1 ~ 0,
+    hcv_test_rslt == 2 ~ 1,
+    TRUE ~ hcv_test_rslt
+  ))
+
+# Filter the dataset to include only rows where hcv_test_rslt is 0 or 1
+baseline_analysis_hcv <- baseline_analysis_hcv %>%
+  filter(hcv_test_rslt %in% c(0, 1))
+
+# Create a summary table with variables as rows and hcv_test_rslt levels as columns
+hcv_summary_table <- baseline_analysis_hcv %>%
+  dplyr::select(sex_work_current, homeless_current, ethnic_roma, gender, age_bin, hcv_test_rslt) %>%
+  pivot_longer(
+    cols = c(sex_work_current, homeless_current, ethnic_roma, gender, age_bin),
+    names_to = "Variable",
+    values_to = "Level"
+  ) %>%
+  group_by(Variable, Level, hcv_test_rslt) %>%
+  summarise(
+    Count = n(),
+    .groups = "drop"
+  ) %>%
+  pivot_wider(
+    names_from = hcv_test_rslt,
+    values_from = Count,
+    values_fill = 0  # Fill missing values with 0
+  ) %>%
+  rename(
+    HCV_Negative = `0`,
+    HCV_Positive = `1`
+  ) %>%
+  mutate(
+    Total = HCV_Negative + HCV_Positive,
+    Proportion_Positive = (HCV_Positive / Total) * 100
+  )
+
+# Print the summary table
+print(hcv_summary_table)
+
+# Save the summary table to a CSV file
+write.csv(hcv_summary_table, "hcv_summary_table.csv", row.names = FALSE)
+
+# Filter the dataset to include only rows where gender == 1
+baseline_analysis_hcv_gender_1 <- baseline_analysis_hcv %>%
+  filter(gender == 1)
+
+# Create a summary table for msm_current with hcv_test_rslt levels as columns
+msm_summary_table <- baseline_analysis_hcv_gender_1 %>%
+  dplyr::select(msm_current, hcv_test_rslt) %>%
+  group_by(msm_current, hcv_test_rslt) %>%
+  summarise(
+    Count = n(),
+    .groups = "drop"
+  ) %>%
+  pivot_wider(
+    names_from = hcv_test_rslt,
+    values_from = Count,
+    values_fill = 0  # Fill missing values with 0
+  ) %>%
+  rename(
+    HCV_Negative = `0`,
+    HCV_Positive = `1`
+  ) %>%
+  mutate(
+    Total = HCV_Negative + HCV_Positive,
+    Proportion_Positive = (HCV_Positive / Total) * 100
+  )
+
+# Print the summary table
+print(msm_summary_table)
+
+# Save the summary table to a CSV file
+write.csv(msm_summary_table, "msm_summary_table_gender_1.csv", row.names = FALSE)
