@@ -1000,8 +1000,3 @@ HCV_incidence_trends_plot <- ggplot(incidence_trends, aes(x = two_year_interval,
 
 # Save the plot as a PNG file
 ggsave("plots/HCV_incidence_trends_plot.png", plot = HCV_incidence_trends_plot, width = 10, height = 6, dpi = 300)
-
-## Cox regression analysis
-
-View(processed_dataframes_long[[1]])
-View(processed_dataframes[[1]])
