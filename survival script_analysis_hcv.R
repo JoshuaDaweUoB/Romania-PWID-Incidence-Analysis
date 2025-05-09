@@ -4,6 +4,235 @@ pacman::p_load(tidyr, withr, lubridate, MASS, writexl, readxl, arsenal, survival
 ## set wd
 setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/Romania PWID/data")
 
+## Baseline prevalence and predictors of HCV infection
+
+# Load data
+baseline_analysis_hcv <- romania_pwid_raw
+
+# sequence by id 
+baseline_analysis_hcv <- baseline_analysis_hcv %>%
+  arrange(id) %>%  # Ensure rows are sorted by id
+  mutate(id_seq = cumsum(!duplicated(id)))  # Increment by 1 for each new id
+
+View(baseline_analysis_hcv)
+
+# Find the highest value in the id_seq column
+highest_id_seq <- baseline_analysis_hcv %>%
+  summarise(max_id_seq = max(id_seq, na.rm = TRUE))
+
+# Print the result
+cat("Highest value in id_seq:\n")
+print(highest_id_seq)
+
+# remove rows where hiv test result is missing
+baseline_analysis_hcv <- baseline_analysis_hcv[!is.na(baseline_analysis_hcv$hcv_test_rslt), ]
+
+# remove rows where hiv test result is indeterminate
+baseline_analysis_hcv <- baseline_analysis_hcv %>%
+  filter(!hcv_test_rslt == 3)
+
+# create sequence of visits by ID
+baseline_analysis_hcv <- baseline_analysis_hcv %>%
+  group_by(id) %>%
+  arrange(id, appointment_dte) %>%
+  mutate(appointment_seq = row_number())
+
+baseline_analysis_hcv <- ungroup(baseline_analysis_hcv)
+
+# Keep only rows where appointment_seq equals 1
+baseline_analysis_hcv <- baseline_analysis_hcv %>%
+  filter(appointment_seq == 1)
+
+# Subset romania_pwid_hcv to include only rows that match id, appointment_dte, and hcv_test_seq in romania_pwid_hcv_test
+baseline_analysis_hcv <- baseline_analysis_hcv %>%
+  mutate(
+    sex_work_current = ifelse(is.na(sex_work_current), 0, sex_work_current),
+    msm_current = ifelse(is.na(msm_current), 0, msm_current),
+    homeless_current = ifelse(is.na(homeless_current), 0, homeless_current),
+    ethnic_roma = ifelse(is.na(ethnic_roma), 0, ethnic_roma),
+    gender = ifelse(gender == 2, 0, gender) 
+  )
+
+# Ensure dob is in the correct Date format
+baseline_analysis_hcv <- baseline_analysis_hcv %>%
+  mutate(dob = as.Date(dob, format = "%d/%m/%Y")) %>%
+  mutate(age_years = as.numeric(difftime(appointment_dte, dob, units = "days")) / 365.25) %>%
+  mutate(age_bin = ifelse(age_years < 30, 0, 1))
+
+# change test results to 0 and 1
+baseline_analysis_hcv <- baseline_analysis_hcv %>%
+  mutate(hcv_test_rslt = case_when(
+    hcv_test_rslt == 1 ~ 0,
+    hcv_test_rslt == 2 ~ 1,
+    TRUE ~ hcv_test_rslt
+  ))
+
+# Filter the dataset to include only rows where hcv_test_rslt is 0 or 1
+baseline_analysis_hcv <- baseline_analysis_hcv %>%
+  filter(hcv_test_rslt %in% c(0, 1))
+
+# Create a summary table with variables as rows and hcv_test_rslt levels as columns
+hcv_summary_table <- baseline_analysis_hcv %>%
+  dplyr::select(sex_work_current, homeless_current, ethnic_roma, gender, age_bin, hcv_test_rslt) %>%
+  pivot_longer(
+    cols = c(sex_work_current, homeless_current, ethnic_roma, gender, age_bin),
+    names_to = "Variable",
+    values_to = "Level"
+  ) %>%
+  group_by(Variable, Level, hcv_test_rslt) %>%
+  summarise(
+    Count = n(),
+    .groups = "drop"
+  ) %>%
+  pivot_wider(
+    names_from = hcv_test_rslt,
+    values_from = Count,
+    values_fill = 0  # Fill missing values with 0
+  ) %>%
+  rename(
+    HCV_Negative = `0`,
+    HCV_Positive = `1`
+  ) %>%
+  mutate(
+    Total = HCV_Negative + HCV_Positive,
+    Proportion_Positive = (HCV_Positive / Total) * 100
+  )
+
+# Print the summary table
+print(hcv_summary_table)
+
+# Save the summary table to a CSV file
+write.csv(hcv_summary_table, "hcv_summary_table.csv", row.names = FALSE)
+
+# Filter the dataset to include only rows where gender == 1
+baseline_analysis_hcv_gender_1 <- baseline_analysis_hcv %>%
+  filter(gender == 1)
+
+# Create a summary table for msm_current with hcv_test_rslt levels as columns
+msm_summary_table <- baseline_analysis_hcv_gender_1 %>%
+  dplyr::select(msm_current, hcv_test_rslt) %>%
+  group_by(msm_current, hcv_test_rslt) %>%
+  summarise(
+    Count = n(),
+    .groups = "drop"
+  ) %>%
+  pivot_wider(
+    names_from = hcv_test_rslt,
+    values_from = Count,
+    values_fill = 0  # Fill missing values with 0
+  ) %>%
+  rename(
+    HCV_Negative = `0`,
+    HCV_Positive = `1`
+  ) %>%
+  mutate(
+    Total = HCV_Negative + HCV_Positive,
+    Proportion_Positive = (HCV_Positive / Total) * 100
+  )
+
+# Print the summary table
+print(msm_summary_table)
+
+# Save the summary table to a CSV file
+write.csv(msm_summary_table, "msm_summary_table_gender_1.csv", row.names = FALSE)
+
+## differences between excluded and included in longitudinal analysis
+
+# remove rows where hiv test result is missing
+romania_pwid_hcv_tb2 <- romania_pwid_raw[!is.na(romania_pwid_raw$hcv_test_rslt), ]
+
+# remove rows where hiv test result is indeterminate
+romania_pwid_hcv_tb2 <- romania_pwid_hcv_tb2 %>%
+  filter(!hcv_test_rslt == 3)
+
+# create sequence of visits by ID
+romania_pwid_hcv_tb2 <- romania_pwid_hcv_tb2 %>%
+  group_by(id) %>%
+  arrange(id, appointment_dte) %>%
+  mutate(appointment_seq = row_number())
+
+romania_pwid_hcv_tb2 <- ungroup(romania_pwid_hcv_tb2)
+
+# remove IDs where hcv positive at baseline
+ids_to_remove <- romania_pwid_hcv_tb2 %>%
+  filter(appointment_seq == 1 & hcv_test_rslt == 2) %>%
+  pull(id)
+
+romania_pwid_hcv_tb2 <- romania_pwid_hcv_tb2 %>%
+  filter(!(id %in% ids_to_remove))
+
+# flag participants with multiple tests
+romania_pwid_hcv_tb2 <- romania_pwid_hcv_tb2 %>%
+  group_by(id) %>%
+  arrange(id) %>%
+  mutate(hcv_test_seq = row_number())
+
+# create indicator of multiple tests vs. single test
+romania_pwid_hcv_tb2 <- romania_pwid_hcv_tb2 %>%
+  group_by(id) %>%  # Group by id
+  mutate(
+    hcv_test_seq_max = max(hcv_test_seq, na.rm = TRUE),  # Calculate the maximum value of hcv_test_seq for each id
+    hcv_test_seq_bin = ifelse(hcv_test_seq_max == 1, 0, 1)  # Create binary variable based on hcv_test_seq_max
+  ) %>%
+  ungroup()  # Ungroup after the operation
+
+# keep participants first test
+romania_pwid_hcv_tb2 <- romania_pwid_hcv_tb2 %>%
+  filter(hcv_test_seq == 1)
+
+# Create a summary table for hcv_test_seq_bin
+hcv_test_seq_bin_summary <- romania_pwid_hcv_tb2 %>%
+  group_by(hcv_test_seq_bin) %>%
+  summarise(
+    Count = n(),  # Count the number of rows for each value of hcv_test_seq_bin
+    Proportion = (n() / nrow(romania_pwid_hcv_tb2)) * 100  # Calculate the proportion
+  )
+
+# Print the summary table
+cat("Summary table for hcv_test_seq_bin:\n")
+print(hcv_test_seq_bin_summary)
+
+# Ensure dob is in the correct Date format
+romania_pwid_hcv_tb2 <- romania_pwid_hcv_tb2 %>%
+  mutate(dob = as.Date(dob, format = "%d/%m/%Y")) %>%
+  mutate(age_years = as.numeric(difftime(appointment_dte, dob, units = "days")) / 365.25) %>%
+  mutate(age_bin = ifelse(age_years < 30, 0, 1))
+
+# create table of differences between included and excluded participants
+
+# Create a summary table
+summary_table <- romania_pwid_hcv_tb2 %>%
+  dplyr::select(sex_work_current, homeless_current, ethnic_roma, age_bin, gender, hcv_test_seq_bin) %>%
+  pivot_longer(
+    cols = c(sex_work_current, homeless_current, ethnic_roma, age_bin, gender),
+    names_to = "Variable",
+    values_to = "Level"
+  ) %>%
+  group_by(Variable, Level, hcv_test_seq_bin) %>%
+  summarise(
+    Count = n(),  # Count the number of rows for each combination
+    .groups = "drop"
+  ) %>%
+  pivot_wider(
+    names_from = hcv_test_seq_bin,
+    values_from = Count,
+    values_fill = 0  # Fill missing values with 0
+  ) %>%
+  rename(
+    Single_Test = `0`,  # Rename column for hcv_test_seq_bin == 0
+    Multiple_Tests = `1`  # Rename column for hcv_test_seq_bin == 1
+  ) %>%
+  mutate(
+    Total = Single_Test + Multiple_Tests,  # Calculate the total count
+    Proportion_Multiple_Tests = (Multiple_Tests / Total) * 100  # Calculate the proportion of multiple tests
+  )
+
+# Print the summary table
+print(summary_table)
+
+# Save the summary table to a CSV file
+write.csv(summary_table, "hcv_test_seq_bin_summary_table.csv", row.names = FALSE)
+
 ## longitudinal analysis- approach 1
 
 # View the first processed dataframe for verification
@@ -416,6 +645,113 @@ View(combined_two_yearly_results)
 
 # Initialize a list to store the results for all 1000 dataframes
 all_two_yearly_results <- list()
+
+# longitudinal analysis - approach 2
+
+# Loop over all 1000 dataframes in the list
+for (i in 1:length(processed_dataframes_long)) {
+  cat("Processing dataframe", i, "of", length(processed_dataframes_long), "\n")
+  
+  # Load the current dataframe
+  midpoint_dataframe <- processed_dataframes_long[[i]]
+  
+  # Replace midpoint_year with NA if hcv_test_rslt is negative
+  midpoint_dataframe <- midpoint_dataframe %>%
+    mutate(
+      midpoint_year = ifelse(hcv_test_rslt == 0, NA, midpoint_year)  # Replace midpoint_year with NA if hcv_test_rslt == 0
+    )
+  
+  # Create a dataframe with rows for years 2013 to 2022 and calculate cases and years_at_risk
+  yearly_data <- midpoint_dataframe %>%
+    group_by(year) %>%
+    summarise(
+      cases = sum(hcv_test_rslt, na.rm = TRUE),        # Sum of hcv_test_rslt for each year
+      years_at_risk = sum(time_at_risk, na.rm = TRUE)  # Sum of time_at_risk for each year
+    ) %>%
+    filter(year %in% 2013:2022)  # Ensure only rows for years 2013 to 2022 are included
+  
+  # Define two-yearly intervals
+  midpoint_dataframe <- midpoint_dataframe %>%
+    mutate(
+      two_year_interval = case_when(
+        year %in% c(2013, 2014) ~ "2013-2014",
+        year %in% c(2015, 2016) ~ "2015-2016",
+        year %in% c(2017, 2018) ~ "2017-2018",
+        year %in% c(2019, 2020) ~ "2019-2020",
+        year %in% c(2021, 2022) ~ "2021-2022",
+        TRUE ~ NA_character_  # Exclude years outside the range
+      )
+    )
+
+  # Group by two-year intervals and calculate totals
+  two_yearly_results <- midpoint_dataframe %>%
+    filter(!is.na(two_year_interval)) %>%  # Exclude rows without a valid interval
+    group_by(two_year_interval) %>%
+    summarise(
+      total_hcv_infections = sum(hcv_test_rslt, na.rm = TRUE),  # Total cases
+      total_person_years = sum(time_at_risk, na.rm = TRUE),     # Total person-years
+      incidence_rate = (total_hcv_infections / total_person_years) * 100,  # Incidence rate per 100 person-years
+      lower_bound = (total_hcv_infections / total_person_years) * 100 - 
+                    1.96 * sqrt(total_hcv_infections / (total_person_years^2)) * 100,  # Lower 95% CI
+      upper_bound = (total_hcv_infections / total_person_years) * 100 + 
+                    1.96 * sqrt(total_hcv_infections / (total_person_years^2)) * 100   # Upper 95% CI
+    )
+  
+  # Store the results in the list
+  all_two_yearly_results[[i]] <- two_yearly_results
+}
+
+# Combine all results into a single dataframe
+combined_two_yearly_results <- bind_rows(all_two_yearly_results, .id = "iteration")
+
+# Save the combined results to a CSV file
+write.csv(combined_two_yearly_results, "combined_two_yearly_results.csv", row.names = FALSE)
+
+# View the combined results
+View(combined_two_yearly_results)
+
+# Calculate incidence trends over time
+# Group by two-yearly intervals and calculate the median and percentiles
+incidence_trends <- combined_two_yearly_results %>%
+  group_by(two_year_interval) %>%
+  summarise(
+    median_incidence_rate = median(incidence_rate, na.rm = TRUE),  # Median incidence rate
+    lower_bound = quantile(incidence_rate, 0.025, na.rm = TRUE),  # 2.5th percentile
+    upper_bound = quantile(incidence_rate, 0.975, na.rm = TRUE),  # 97.5th percentile
+    median_total_person_years = median(total_person_years, na.rm = TRUE),  # Median total person-years
+    median_total_hcv_infections = median(total_hcv_infections, na.rm = TRUE)  # Median total HCV infections
+  )
+
+# View the incidence trends
+print(incidence_trends)
+View(incidence_trends)
+
+# Save the incidence trends to a CSV file
+write.csv(incidence_trends, "incidence_trends.csv", row.names = FALSE)
+
+# Create a plot for the incidence trends
+HCV_incidence_trends_plot <- ggplot(incidence_trends, aes(x = two_year_interval, y = median_incidence_rate)) +
+  geom_line(group = 1, color = "gray", linewidth = 0.8, linetype = "solid") +  # Solid gray line for trends
+  geom_point(shape = 18, size = 4, color = "gray") +  # Gray diamonds for points
+  geom_errorbar(aes(ymin = lower_bound, ymax = upper_bound), width = 0.1, color = "black", size = 0.8) +  # Black error bars
+  theme_minimal(base_size = 14) +  # Minimal theme
+  labs(
+    x = "Two-Yearly Interval",
+    y = "Median Incidence Rate (per 100 Person-Years)"
+  ) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, max(incidence_trends$upper_bound, na.rm = TRUE) * 1.1)) +  # Adjust y-axis limits
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis labels for better readability
+    axis.title.x = element_text(margin = margin(t = 10)),  # Add margin to x-axis title
+    axis.title.y = element_text(margin = margin(r = 10)),  # Add margin to y-axis title
+    panel.grid.major = element_blank(),  # Remove major gridlines
+    panel.grid.minor = element_blank(),  # Remove minor gridlines
+    panel.background = element_rect(fill = "white", color = NA),  # Set panel background to white
+    plot.background = element_rect(fill = "white", color = NA)  # Set plot background to white
+  )
+
+# Save the plot as a PNG file
+ggsave("plots/HCV_incidence_trends_plot.png", plot = HCV_incidence_trends_plot, width = 10, height = 6, dpi = 300)
 
 ## cox regression analysis
 View(processed_dataframes[[1]])
@@ -894,109 +1230,3 @@ View(summary_table_female)
 # Save the summary table to a CSV file
 write.csv(summary_table_female, "cox_regression_summary_table_female.csv", row.names = FALSE)
 
-# same analysis on long dataframes
-
-# Loop over all 1000 dataframes in the list
-for (i in 1:length(processed_dataframes_long)) {
-  cat("Processing dataframe", i, "of", length(processed_dataframes_long), "\n")
-  
-  # Load the current dataframe
-  midpoint_dataframe <- processed_dataframes_long[[i]]
-  
-  # Replace midpoint_year with NA if hcv_test_rslt is negative
-  midpoint_dataframe <- midpoint_dataframe %>%
-    mutate(
-      midpoint_year = ifelse(hcv_test_rslt == 0, NA, midpoint_year)  # Replace midpoint_year with NA if hcv_test_rslt == 0
-    )
-  
-  # Create a dataframe with rows for years 2013 to 2022 and calculate cases and years_at_risk
-  yearly_data <- midpoint_dataframe %>%
-    group_by(year) %>%
-    summarise(
-      cases = sum(hcv_test_rslt, na.rm = TRUE),        # Sum of hcv_test_rslt for each year
-      years_at_risk = sum(time_at_risk, na.rm = TRUE)  # Sum of time_at_risk for each year
-    ) %>%
-    filter(year %in% 2013:2022)  # Ensure only rows for years 2013 to 2022 are included
-  
-  # Define two-yearly intervals
-  midpoint_dataframe <- midpoint_dataframe %>%
-    mutate(
-      two_year_interval = case_when(
-        year %in% c(2013, 2014) ~ "2013-2014",
-        year %in% c(2015, 2016) ~ "2015-2016",
-        year %in% c(2017, 2018) ~ "2017-2018",
-        year %in% c(2019, 2020) ~ "2019-2020",
-        year %in% c(2021, 2022) ~ "2021-2022",
-        TRUE ~ NA_character_  # Exclude years outside the range
-      )
-    )
-
-  # Group by two-year intervals and calculate totals
-  two_yearly_results <- midpoint_dataframe %>%
-    filter(!is.na(two_year_interval)) %>%  # Exclude rows without a valid interval
-    group_by(two_year_interval) %>%
-    summarise(
-      total_hcv_infections = sum(hcv_test_rslt, na.rm = TRUE),  # Total cases
-      total_person_years = sum(time_at_risk, na.rm = TRUE),     # Total person-years
-      incidence_rate = (total_hcv_infections / total_person_years) * 100,  # Incidence rate per 100 person-years
-      lower_bound = (total_hcv_infections / total_person_years) * 100 - 
-                    1.96 * sqrt(total_hcv_infections / (total_person_years^2)) * 100,  # Lower 95% CI
-      upper_bound = (total_hcv_infections / total_person_years) * 100 + 
-                    1.96 * sqrt(total_hcv_infections / (total_person_years^2)) * 100   # Upper 95% CI
-    )
-  
-  # Store the results in the list
-  all_two_yearly_results[[i]] <- two_yearly_results
-}
-
-# Combine all results into a single dataframe
-combined_two_yearly_results <- bind_rows(all_two_yearly_results, .id = "iteration")
-
-# Save the combined results to a CSV file
-write.csv(combined_two_yearly_results, "combined_two_yearly_results.csv", row.names = FALSE)
-
-# View the combined results
-View(combined_two_yearly_results)
-
-# Calculate incidence trends over time
-# Group by two-yearly intervals and calculate the median and percentiles
-incidence_trends <- combined_two_yearly_results %>%
-  group_by(two_year_interval) %>%
-  summarise(
-    median_incidence_rate = median(incidence_rate, na.rm = TRUE),  # Median incidence rate
-    lower_bound = quantile(incidence_rate, 0.025, na.rm = TRUE),  # 2.5th percentile
-    upper_bound = quantile(incidence_rate, 0.975, na.rm = TRUE),  # 97.5th percentile
-    median_total_person_years = median(total_person_years, na.rm = TRUE),  # Median total person-years
-    median_total_hcv_infections = median(total_hcv_infections, na.rm = TRUE)  # Median total HCV infections
-  )
-
-# View the incidence trends
-print(incidence_trends)
-View(incidence_trends)
-
-# Save the incidence trends to a CSV file
-write.csv(incidence_trends, "incidence_trends.csv", row.names = FALSE)
-
-# Create a plot for the incidence trends
-HCV_incidence_trends_plot <- ggplot(incidence_trends, aes(x = two_year_interval, y = median_incidence_rate)) +
-  geom_line(group = 1, color = "gray", linewidth = 0.8, linetype = "solid") +  # Solid gray line for trends
-  geom_point(shape = 18, size = 4, color = "gray") +  # Gray diamonds for points
-  geom_errorbar(aes(ymin = lower_bound, ymax = upper_bound), width = 0.1, color = "black", size = 0.8) +  # Black error bars
-  theme_minimal(base_size = 14) +  # Minimal theme
-  labs(
-    x = "Two-Yearly Interval",
-    y = "Median Incidence Rate (per 100 Person-Years)"
-  ) +
-  scale_y_continuous(expand = c(0, 0), limits = c(0, max(incidence_trends$upper_bound, na.rm = TRUE) * 1.1)) +  # Adjust y-axis limits
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis labels for better readability
-    axis.title.x = element_text(margin = margin(t = 10)),  # Add margin to x-axis title
-    axis.title.y = element_text(margin = margin(r = 10)),  # Add margin to y-axis title
-    panel.grid.major = element_blank(),  # Remove major gridlines
-    panel.grid.minor = element_blank(),  # Remove minor gridlines
-    panel.background = element_rect(fill = "white", color = NA),  # Set panel background to white
-    plot.background = element_rect(fill = "white", color = NA)  # Set plot background to white
-  )
-
-# Save the plot as a PNG file
-ggsave("plots/HCV_incidence_trends_plot.png", plot = HCV_incidence_trends_plot, width = 10, height = 6, dpi = 300)

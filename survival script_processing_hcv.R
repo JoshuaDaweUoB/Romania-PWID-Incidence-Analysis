@@ -16,6 +16,21 @@ romania_pwid_hcv <- romania_pwid_raw[!is.na(romania_pwid_raw$hcv_test_rslt), ]
 romania_pwid_hcv <- romania_pwid_hcv %>%
   filter(!hcv_test_rslt == 3)
 
+# sequence by id 
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  arrange(id) %>%  # Ensure rows are sorted by id
+  mutate(id_seq = cumsum(!duplicated(id)))  # Increment by 1 for each new id
+
+View(romania_pwid_hcv)
+
+# Find the highest value in the id_seq column
+highest_id_seq <- romania_pwid_hcv %>%
+  summarise(max_id_seq = max(id_seq, na.rm = TRUE))
+
+# Print the result
+cat("Highest value in id_seq:\n")
+print(highest_id_seq)
+
 # create sequence of visits by ID
 romania_pwid_hcv <- romania_pwid_hcv %>%
   group_by(id) %>%
@@ -36,6 +51,19 @@ ids_to_remove <- romania_pwid_hcv %>%
 romania_pwid_hcv <- romania_pwid_hcv %>%
   filter(!(id %in% ids_to_remove))
 
+# sequence by id 
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  arrange(id) %>%  # Ensure rows are sorted by id
+  mutate(id_seq = cumsum(!duplicated(id)))  # Increment by 1 for each new id
+
+# Find the highest value in the id_seq column
+highest_id_seq <- romania_pwid_hcv %>%
+  summarise(max_id_seq = max(id_seq, na.rm = TRUE))
+
+# Print the result
+cat("Highest value in id_seq:\n")
+print(highest_id_seq)
+
 # HCV test results by visit
 romania_pwid_hcv_summary <- table(romania_pwid_hcv$appointment_seq, romania_pwid_hcv$hcv_test_rslt)
 print(romania_pwid_hcv_summary) 
@@ -48,13 +76,26 @@ romania_pwid_hcv <- romania_pwid_hcv %>%
 
 # HCV test results by visit
 romania_pwid_hcv_summary <- table(romania_pwid_hcv$hcv_test_seq, romania_pwid_hcv$hcv_test_rslt)
-print(romania_pwid_hcv_summary) 
+print(romania_pwid_hcv_summary)
 
 # remove participants with only one test
 romania_pwid_hcv <- romania_pwid_hcv %>%
   group_by(id) %>%
   filter(!(max(hcv_test_seq, na.rm = TRUE) == 1)) %>%
   ungroup()
+
+# sequence by id 
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  arrange(id) %>%  # Ensure rows are sorted by id
+  mutate(id_seq = cumsum(!duplicated(id)))  # Increment by 1 for each new id
+
+# Find the highest value in the id_seq column
+highest_id_seq <- romania_pwid_hcv %>%
+  summarise(max_id_seq = max(id_seq, na.rm = TRUE))
+
+# Print the result
+cat("Highest value in id_seq:\n")
+print(highest_id_seq)
 
 # HCV test results by visit
 romania_pwid_hcv_summary <- table(romania_pwid_hcv$hcv_test_seq, romania_pwid_hcv$hcv_test_rslt)
@@ -415,120 +456,3 @@ for (i in 1:length(processed_dataframes)) {
 
 # Save the list of long format processed dataframes to a file
 saveRDS(processed_dataframes_long, file = "processed_dataframes_long.rds")
-
-## Baseline prevalence and predictors of HCV infection
-
-# Load data
-baseline_analysis_hcv <- romania_pwid_raw
-
-# remove rows where hiv test result is missing
-baseline_analysis_hcv <- baseline_analysis_hcv[!is.na(baseline_analysis_hcv$hcv_test_rslt), ]
-
-# remove rows where hiv test result is indeterminate
-baseline_analysis_hcv <- baseline_analysis_hcv %>%
-  filter(!hcv_test_rslt == 3)
-
-# create sequence of visits by ID
-baseline_analysis_hcv <- baseline_analysis_hcv %>%
-  group_by(id) %>%
-  arrange(id, appointment_dte) %>%
-  mutate(appointment_seq = row_number())
-
-baseline_analysis_hcv <- ungroup(baseline_analysis_hcv)
-
-# Keep only rows where appointment_seq equals 1
-baseline_analysis_hcv <- baseline_analysis_hcv %>%
-  filter(appointment_seq == 1)
-
-# Subset romania_pwid_hcv to include only rows that match id, appointment_dte, and hcv_test_seq in romania_pwid_hcv_test
-baseline_analysis_hcv <- baseline_analysis_hcv %>%
-  mutate(
-    sex_work_current = ifelse(is.na(sex_work_current), 0, sex_work_current),
-    msm_current = ifelse(is.na(msm_current), 0, msm_current),
-    homeless_current = ifelse(is.na(homeless_current), 0, homeless_current),
-    ethnic_roma = ifelse(is.na(ethnic_roma), 0, ethnic_roma),
-    gender = ifelse(gender == 2, 0, gender) 
-  )
-
-# Ensure dob is in the correct Date format
-baseline_analysis_hcv <- baseline_analysis_hcv %>%
-  mutate(dob = as.Date(dob, format = "%d/%m/%Y")) %>%
-  mutate(age_years = as.numeric(difftime(appointment_dte, dob, units = "days")) / 365.25) %>%
-  mutate(age_bin = ifelse(age_years < 30, 0, 1))
-
-# change test results to 0 and 1
-baseline_analysis_hcv <- baseline_analysis_hcv %>%
-  mutate(hcv_test_rslt = case_when(
-    hcv_test_rslt == 1 ~ 0,
-    hcv_test_rslt == 2 ~ 1,
-    TRUE ~ hcv_test_rslt
-  ))
-
-# Filter the dataset to include only rows where hcv_test_rslt is 0 or 1
-baseline_analysis_hcv <- baseline_analysis_hcv %>%
-  filter(hcv_test_rslt %in% c(0, 1))
-
-# Create a summary table with variables as rows and hcv_test_rslt levels as columns
-hcv_summary_table <- baseline_analysis_hcv %>%
-  dplyr::select(sex_work_current, homeless_current, ethnic_roma, gender, age_bin, hcv_test_rslt) %>%
-  pivot_longer(
-    cols = c(sex_work_current, homeless_current, ethnic_roma, gender, age_bin),
-    names_to = "Variable",
-    values_to = "Level"
-  ) %>%
-  group_by(Variable, Level, hcv_test_rslt) %>%
-  summarise(
-    Count = n(),
-    .groups = "drop"
-  ) %>%
-  pivot_wider(
-    names_from = hcv_test_rslt,
-    values_from = Count,
-    values_fill = 0  # Fill missing values with 0
-  ) %>%
-  rename(
-    HCV_Negative = `0`,
-    HCV_Positive = `1`
-  ) %>%
-  mutate(
-    Total = HCV_Negative + HCV_Positive,
-    Proportion_Positive = (HCV_Positive / Total) * 100
-  )
-
-# Print the summary table
-print(hcv_summary_table)
-
-# Save the summary table to a CSV file
-write.csv(hcv_summary_table, "hcv_summary_table.csv", row.names = FALSE)
-
-# Filter the dataset to include only rows where gender == 1
-baseline_analysis_hcv_gender_1 <- baseline_analysis_hcv %>%
-  filter(gender == 1)
-
-# Create a summary table for msm_current with hcv_test_rslt levels as columns
-msm_summary_table <- baseline_analysis_hcv_gender_1 %>%
-  dplyr::select(msm_current, hcv_test_rslt) %>%
-  group_by(msm_current, hcv_test_rslt) %>%
-  summarise(
-    Count = n(),
-    .groups = "drop"
-  ) %>%
-  pivot_wider(
-    names_from = hcv_test_rslt,
-    values_from = Count,
-    values_fill = 0  # Fill missing values with 0
-  ) %>%
-  rename(
-    HCV_Negative = `0`,
-    HCV_Positive = `1`
-  ) %>%
-  mutate(
-    Total = HCV_Negative + HCV_Positive,
-    Proportion_Positive = (HCV_Positive / Total) * 100
-  )
-
-# Print the summary table
-print(msm_summary_table)
-
-# Save the summary table to a CSV file
-write.csv(msm_summary_table, "msm_summary_table_gender_1.csv", row.names = FALSE)
