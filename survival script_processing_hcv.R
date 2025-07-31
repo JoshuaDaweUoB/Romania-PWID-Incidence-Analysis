@@ -172,15 +172,6 @@ write.csv(romania_pwid_hcv_test, "romania_pwid_hcv_test.csv")
 ### bootstrapping
 View(romania_pwid_hcv_test)
 
-
-
-
-
-
-
-
-
-
 # Filter to include BOTH seroconverters AND non-seroconverters
 df_all_participants <- romania_pwid_hcv_test %>%
   filter(hcv_test_rslt %in% c(0, 1)) %>%  # Include both negative (0) and positive (1) results
@@ -238,6 +229,75 @@ cat(sprintf("Incidence rate: %.2f per 100 person-years (95%% CI: %.2f – %.2f)\
             ir_mean, ir_lower, ir_upper))
 
 
+
+
+
+
+
+# Filter to include BOTH seroconverters AND non-seroconverters
+df_all_participants <- romania_pwid_hcv_test %>%
+  filter(hcv_test_rslt %in% c(0, 1)) %>%
+  filter(!is.na(appointment_dte_lag)) %>%
+  filter(appointment_dte_lag > appointment_dte) %>%
+  filter(as.numeric(appointment_dte_lag - appointment_dte) > 0)
+
+cat("Total participants (seroconverters + non-seroconverters):", nrow(df_all_participants), "\n")
+cat("Number of seroconverters:", sum(df_all_participants$hcv_test_rslt == 1), "\n")
+cat("Number of non-seroconverters:", sum(df_all_participants$hcv_test_rslt == 0), "\n")
+
+# Bootstrap function with random infection dates
+bootstrap_incidence_random <- function(data, n_infection_samples = 10) {
+  resample <- data %>% sample_n(size = nrow(data), replace = TRUE)
+  
+  # For each seroconverter, sample n_infection_samples random infection dates and average person-time
+  resample <- resample %>%
+    rowwise() %>%
+    mutate(
+      pt = if (hcv_test_rslt == 1) {
+        mean(
+          sapply(1:n_infection_samples, function(x) {
+            infection_date <- as.Date(runif(1, min = as.numeric(appointment_dte), max = as.numeric(appointment_dte_lag)), origin = "1970-01-01")
+            max(as.numeric(infection_date - appointment_dte), 1)
+          })
+        )
+      } else {
+        max(as.numeric(appointment_dte_lag - appointment_dte), 1)
+      }
+    ) %>%
+    ungroup()
+  
+  total_pt <- sum(resample$pt)
+  cases <- sum(resample$hcv_test_rslt == 1)
+  (cases / total_pt) * 365.25 * 100
+}
+
+# Run bootstrap with random infection dates (100 iterations for speed)
+set.seed(42)
+bootstrap_results <- replicate(100, bootstrap_incidence_random(df_all_participants, n_infection_samples = 10))
+
+# Summarize results
+ir_mean <- mean(bootstrap_results, na.rm = TRUE)
+ir_lower <- quantile(bootstrap_results, 0.025, na.rm = TRUE)
+ir_upper <- quantile(bootstrap_results, 0.975, na.rm = TRUE)
+
+cat(sprintf("Incidence rate: %.2f per 100 person-years (95%% CI: %.2f – %.2f)\n",
+            ir_mean, ir_lower, ir_upper))
+
+
+# 1. Uncertainty in Infection Timing
+# For people who seroconvert, you only know they were infected sometime between their last negative and first positive test.
+# Assigning a random infection date within this interval (the "random-point" method) reflects the true uncertainty about when infection occurred.
+# 2. Bootstrapping Adds Sampling Uncertainty
+# By resampling participants with replacement, you account for sampling variability (i.e., how your results might change if you had a different sample from the same population).
+# 3. Combining Both Uncertainties
+# Your method combines infection timing uncertainty (random-point assignment) and sampling uncertainty (bootstrap resampling).
+# This produces more realistic confidence intervals for incidence rates than methods that ignore one or both sources of uncertainty.
+# 4. Standard Practice
+# The random-point method is a standard approach for interval-censored data in infectious disease epidemiology.
+# Bootstrapping is a standard approach for estimating confidence intervals when analytic solutions are not available or assumptions (e.g., normality) are not met.
+# 5. Comparison to Other Methods
+# The midpoint method (assigning infection to the midpoint of the interval) is simpler but underestimates uncertainty.
+# Your approach is more robust and widely recommended for studies with interval-censored seroconversion.
 
 
 
