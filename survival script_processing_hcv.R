@@ -283,7 +283,6 @@ ir_upper <- quantile(bootstrap_results, 0.975, na.rm = TRUE)
 cat(sprintf("Incidence rate: %.2f per 100 person-years (95%% CI: %.2f – %.2f)\n",
             ir_mean, ir_lower, ir_upper))
 
-
 # 1. Uncertainty in Infection Timing
 # For people who seroconvert, you only know they were infected sometime between their last negative and first positive test.
 # Assigning a random infection date within this interval (the "random-point" method) reflects the true uncertainty about when infection occurred.
