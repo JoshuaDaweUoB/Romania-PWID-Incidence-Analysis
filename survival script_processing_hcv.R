@@ -1,5 +1,5 @@
 ## load packages
-pacman::p_load(dplyr, tidyr, withr, lubridate, MASS, writexl, readxl, arsenal, survival, broom, ggplot2)
+pacman::p_load(dplyr, tidyr, withr, lubridate, MASS, writexl, readxl, arsenal, survival, broom, ggplot2, purrr)
 
 ## set wd
 setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/Romania PWID/data")
@@ -169,8 +169,170 @@ cat("Number of rows where appointment_dte_lag is less than appointment_dte:", nr
 # Save testing data
 write.csv(romania_pwid_hcv_test, "romania_pwid_hcv_test.csv")
 
+### bootstrapping
+View(romania_pwid_hcv_test)
+
+
+
+
+
+
+
+
+
+
+# Filter to include BOTH seroconverters AND non-seroconverters
+df_all_participants <- romania_pwid_hcv_test %>%
+  filter(hcv_test_rslt %in% c(0, 1)) %>%  # Include both negative (0) and positive (1) results
+  filter(!is.na(appointment_dte_lag)) %>%  # Previous appointment exists
+  filter(appointment_dte_lag > appointment_dte) %>%  # Lag date should be AFTER current date
+  filter(as.numeric(appointment_dte_lag - appointment_dte) > 0)  # Positive time interval
+
+cat("Total participants (seroconverters + non-seroconverters):", nrow(df_all_participants), "\n")
+cat("Number of seroconverters:", sum(df_all_participants$hcv_test_rslt == 1), "\n")
+cat("Number of non-seroconverters:", sum(df_all_participants$hcv_test_rslt == 0), "\n")
+
+bootstrap_incidence <- function(data) {
+  resample <- data %>% sample_n(size = nrow(data), replace = TRUE)
+  
+  # Calculate person-time for everyone (seroconverters and non-seroconverters)
+  resample <- resample %>%
+    mutate(
+      # For seroconverters: random infection date between tests
+      # For non-seroconverters: use full interval
+      infection_date = ifelse(
+        hcv_test_rslt == 1,
+        # Seroconverters: random date between appointments
+        map2_dbl(appointment_dte, appointment_dte_lag, ~ {
+          start_num <- as.numeric(.x)
+          end_num <- as.numeric(.y)
+          sample(start_num:end_num, 1)
+        }),
+        # Non-seroconverters: use end date (full interval)
+        as.numeric(appointment_dte_lag)
+      ),
+      infection_date = as.Date(infection_date, origin = "1970-01-01"),
+      pt = as.numeric(infection_date - appointment_dte),
+      pt = ifelse(pt <= 0, 1, pt)  # min 1 day person-time
+    )
+  
+  total_pt <- sum(resample$pt)
+  cases <- sum(resample$hcv_test_rslt == 1)  # Count only seroconverters as cases
+  
+  (cases / total_pt) * 365.25 * 100
+}
+
+# Run bootstrap with all participants (not just seroconverters)
+set.seed(42)
+bootstrap_results <- replicate(100, bootstrap_incidence(df_all_participants))
+
+cat("Number of total participants:", nrow(df_all_participants), "\n")
+cat("Number of bootstrap results with NaN:", sum(is.nan(bootstrap_results)), "\n")
+
+# Summarize results
+ir_mean <- mean(bootstrap_results, na.rm = TRUE)
+ir_lower <- quantile(bootstrap_results, 0.025, na.rm = TRUE)
+ir_upper <- quantile(bootstrap_results, 0.975, na.rm = TRUE)
+
+cat(sprintf("Incidence rate: %.2f per 100 person-years (95%% CI: %.2f – %.2f)\n",
+            ir_mean, ir_lower, ir_upper))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Function to calculate incidence rate from a bootstrap resample
+bootstrap_incidence <- function(data) {
+  resample <- data %>% sample_n(size = nrow(data), replace = TRUE)
+  
+  resample <- resample %>%
+    mutate(
+      start_date = appointment_dte + 1,  # Fixed: should be appointment_dte, not appointment_dte_lag
+      infection_date = map2_dbl(start_date, appointment_dte_lag, ~ {
+        start_num <- as.numeric(.x)
+        end_num <- as.numeric(.y)
+        if (start_num > end_num) {
+          end_num
+        } else {
+          sample(start_num:end_num, 1)
+        }
+      }),
+      infection_date = as.Date(infection_date, origin = "1970-01-01"),
+      pt = as.numeric(infection_date - appointment_dte),
+      pt = ifelse(pt <= 0, 1, pt)  # min 1 day person-time
+    )
+  
+  total_pt <- sum(resample$pt)
+  cases <- nrow(resample)
+  
+  (cases / total_pt) * 365.25 * 100
+}
+
+# Filter valid seroconverters only
+df_seroconv <- romania_pwid_hcv_test %>%
+  filter(hcv_test_rslt == 1) 
+
+# Run bootstrap 1000 times
+set.seed(42)
+bootstrap_results <- replicate(100, bootstrap_incidence(df_seroconv))
+
+cat("Number of valid seroconverters:", nrow(df_seroconv), "\n")
+cat("Number of bootstrap results with NaN:", sum(is.nan(bootstrap_results)), "\n")
+print(bootstrap_results)
+
+# Summarize results
+ir_mean <- mean(bootstrap_results, na.rm = TRUE)
+ir_lower <- quantile(bootstrap_results, 0.025, na.rm = TRUE)
+ir_upper <- quantile(bootstrap_results, 0.975, na.rm = TRUE)
+
+cat(sprintf("Incidence rate: %.2f per 100 person-years (95%% CI: %.2f – %.2f)\n",
+            ir_mean, ir_lower, ir_upper))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 #### random-point sampling with 1000 iterations approach ####
 
+View(romania_pwid_hcv_test)
 # generate random infection dates
 romania_pwid_hcv_test_iterations <- romania_pwid_hcv_test %>%
   filter(hcv_test_rslt == 1) %>%
