@@ -4,184 +4,189 @@ pacman::p_load(dplyr, tidyr, withr, lubridate, MASS, writexl, readxl, arsenal, s
 ## set wd
 setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/Romania PWID/data")
 
-## load data
-romania_pwid_raw <- read_excel("ARAS DATA IDU 2013-2022.xlsx")
+# ## load data
+# romania_pwid_raw <- read_excel("ARAS DATA IDU 2013-2022.xlsx")
 
-## baseline HCV cohort
+# ## baseline HCV cohort
 
-# remove rows where hiv test result is missing
-romania_pwid_hcv <- romania_pwid_raw[!is.na(romania_pwid_raw$hcv_test_rslt), ]
+# # remove rows where hiv test result is missing
+# romania_pwid_hcv <- romania_pwid_raw[!is.na(romania_pwid_raw$hcv_test_rslt), ]
 
-# remove rows where hiv test result is indeterminate
-romania_pwid_hcv <- romania_pwid_hcv %>%
-  filter(!hcv_test_rslt == 3)
+# # remove rows where hiv test result is indeterminate
+# romania_pwid_hcv <- romania_pwid_hcv %>%
+#   filter(!hcv_test_rslt == 3)
 
-# sequence by id 
-romania_pwid_hcv <- romania_pwid_hcv %>%
-  arrange(id) %>%  # Ensure rows are sorted by id
-  mutate(id_seq = cumsum(!duplicated(id)))  # Increment by 1 for each new id
+# # sequence by id 
+# romania_pwid_hcv <- romania_pwid_hcv %>%
+#   arrange(id) %>%  # Ensure rows are sorted by id
+#   mutate(id_seq = cumsum(!duplicated(id)))  # Increment by 1 for each new id
 
-View(romania_pwid_hcv)
+# View(romania_pwid_hcv)
 
-# Find the highest value in the id_seq column
-highest_id_seq <- romania_pwid_hcv %>%
-  summarise(max_id_seq = max(id_seq, na.rm = TRUE))
+# # Find the highest value in the id_seq column
+# highest_id_seq <- romania_pwid_hcv %>%
+#   summarise(max_id_seq = max(id_seq, na.rm = TRUE))
 
-# Print the result
-cat("Highest value in id_seq:\n")
-print(highest_id_seq)
+# # Print the result
+# cat("Highest value in id_seq:\n")
+# print(highest_id_seq)
 
-# create sequence of visits by ID
-romania_pwid_hcv <- romania_pwid_hcv %>%
-  group_by(id) %>%
-  arrange(id, appointment_dte) %>%
-  mutate(appointment_seq = row_number())
+# # create sequence of visits by ID
+# romania_pwid_hcv <- romania_pwid_hcv %>%
+#   group_by(id) %>%
+#   arrange(id, appointment_dte) %>%
+#   mutate(appointment_seq = row_number())
 
-romania_pwid_hcv <- ungroup(romania_pwid_hcv)
+# romania_pwid_hcv <- ungroup(romania_pwid_hcv)
 
-# HCV test results by visit
-romania_pwid_hcv_summary <- table(romania_pwid_hcv$hcv_test_rslt)
-print(romania_pwid_hcv_summary)
+# # HCV test results by visit
+# romania_pwid_hcv_summary <- table(romania_pwid_hcv$hcv_test_rslt)
+# print(romania_pwid_hcv_summary)
 
-# remove IDs where hcv positive at baseline
-ids_to_remove <- romania_pwid_hcv %>%
-  filter(appointment_seq == 1 & hcv_test_rslt == 2) %>%
-  pull(id)
+# # remove IDs where hcv positive at baseline
+# ids_to_remove <- romania_pwid_hcv %>%
+#   filter(appointment_seq == 1 & hcv_test_rslt == 2) %>%
+#   pull(id)
 
-romania_pwid_hcv <- romania_pwid_hcv %>%
-  filter(!(id %in% ids_to_remove))
+# romania_pwid_hcv <- romania_pwid_hcv %>%
+#   filter(!(id %in% ids_to_remove))
 
-# sequence by id 
-romania_pwid_hcv <- romania_pwid_hcv %>%
-  arrange(id) %>%  # Ensure rows are sorted by id
-  mutate(id_seq = cumsum(!duplicated(id)))  # Increment by 1 for each new id
+# # sequence by id 
+# romania_pwid_hcv <- romania_pwid_hcv %>%
+#   arrange(id) %>%  # Ensure rows are sorted by id
+#   mutate(id_seq = cumsum(!duplicated(id)))  # Increment by 1 for each new id
 
-# Find the highest value in the id_seq column
-highest_id_seq <- romania_pwid_hcv %>%
-  summarise(max_id_seq = max(id_seq, na.rm = TRUE))
+# # Find the highest value in the id_seq column
+# highest_id_seq <- romania_pwid_hcv %>%
+#   summarise(max_id_seq = max(id_seq, na.rm = TRUE))
 
-# Print the result
-cat("Highest value in id_seq:\n")
-print(highest_id_seq)
+# # Print the result
+# cat("Highest value in id_seq:\n")
+# print(highest_id_seq)
 
-# HCV test results by visit
-romania_pwid_hcv_summary <- table(romania_pwid_hcv$appointment_seq, romania_pwid_hcv$hcv_test_rslt)
-print(romania_pwid_hcv_summary) 
+# # HCV test results by visit
+# romania_pwid_hcv_summary <- table(romania_pwid_hcv$appointment_seq, romania_pwid_hcv$hcv_test_rslt)
+# print(romania_pwid_hcv_summary) 
 
-# restrict to participants with multiple tests
-romania_pwid_hcv <- romania_pwid_hcv %>%
-  group_by(id) %>%
-  arrange(id) %>%
-  mutate(hcv_test_seq = row_number())
+# # restrict to participants with multiple tests
+# romania_pwid_hcv <- romania_pwid_hcv %>%
+#   group_by(id) %>%
+#   arrange(id) %>%
+#   mutate(hcv_test_seq = row_number())
 
-# HCV test results by visit
-romania_pwid_hcv_summary <- table(romania_pwid_hcv$hcv_test_seq, romania_pwid_hcv$hcv_test_rslt)
-print(romania_pwid_hcv_summary)
+# # HCV test results by visit
+# romania_pwid_hcv_summary <- table(romania_pwid_hcv$hcv_test_seq, romania_pwid_hcv$hcv_test_rslt)
+# print(romania_pwid_hcv_summary)
 
-# remove participants with only one test
-romania_pwid_hcv <- romania_pwid_hcv %>%
-  group_by(id) %>%
-  filter(!(max(hcv_test_seq, na.rm = TRUE) == 1)) %>%
-  ungroup()
+# # remove participants with only one test
+# romania_pwid_hcv <- romania_pwid_hcv %>%
+#   group_by(id) %>%
+#   filter(!(max(hcv_test_seq, na.rm = TRUE) == 1)) %>%
+#   ungroup()
 
-# sequence by id 
-romania_pwid_hcv <- romania_pwid_hcv %>%
-  arrange(id) %>%  # Ensure rows are sorted by id
-  mutate(id_seq = cumsum(!duplicated(id)))  # Increment by 1 for each new id
+# # sequence by id 
+# romania_pwid_hcv <- romania_pwid_hcv %>%
+#   arrange(id) %>%  # Ensure rows are sorted by id
+#   mutate(id_seq = cumsum(!duplicated(id)))  # Increment by 1 for each new id
 
-# Find the highest value in the id_seq column
-highest_id_seq <- romania_pwid_hcv %>%
-  summarise(max_id_seq = max(id_seq, na.rm = TRUE))
+# # Find the highest value in the id_seq column
+# highest_id_seq <- romania_pwid_hcv %>%
+#   summarise(max_id_seq = max(id_seq, na.rm = TRUE))
 
-# Print the result
-cat("Highest value in id_seq:\n")
-print(highest_id_seq)
+# # Print the result
+# cat("Highest value in id_seq:\n")
+# print(highest_id_seq)
 
-# HCV test results by visit
-romania_pwid_hcv_summary <- table(romania_pwid_hcv$hcv_test_seq, romania_pwid_hcv$hcv_test_rslt)
-print(romania_pwid_hcv_summary) 
+# # HCV test results by visit
+# romania_pwid_hcv_summary <- table(romania_pwid_hcv$hcv_test_seq, romania_pwid_hcv$hcv_test_rslt)
+# print(romania_pwid_hcv_summary) 
 
-# Remove HCV tests after the first positive
-romania_pwid_hcv <- romania_pwid_hcv %>%
-  group_by(id) %>%
-  mutate(
-    first_hcv_positive_dte = ifelse(hcv_test_rslt == 2, appointment_dte, NA),
-    first_hcv_positive_dte = if (all(is.na(first_hcv_positive_dte))) NA else min(first_hcv_positive_dte, na.rm = TRUE)
-  ) %>%
-  ungroup()
+# # Remove HCV tests after the first positive
+# romania_pwid_hcv <- romania_pwid_hcv %>%
+#   group_by(id) %>%
+#   mutate(
+#     first_hcv_positive_dte = ifelse(hcv_test_rslt == 2, appointment_dte, NA),
+#     first_hcv_positive_dte = if (all(is.na(first_hcv_positive_dte))) NA else min(first_hcv_positive_dte, na.rm = TRUE)
+#   ) %>%
+#   ungroup()
 
-# Filter rows to keep only those before or on the first positive test date
-romania_pwid_hcv <- romania_pwid_hcv %>%
-  filter(is.na(first_hcv_positive_dte) | appointment_dte <= first_hcv_positive_dte)
+# # Filter rows to keep only those before or on the first positive test date
+# romania_pwid_hcv <- romania_pwid_hcv %>%
+#   filter(is.na(first_hcv_positive_dte) | appointment_dte <= first_hcv_positive_dte)
 
-# HCV test results by visit
-romania_pwid_hcv_summary <- table(romania_pwid_hcv$hcv_test_seq, romania_pwid_hcv$hcv_test_rslt)
-print(romania_pwid_hcv_summary)
+# # HCV test results by visit
+# romania_pwid_hcv_summary <- table(romania_pwid_hcv$hcv_test_seq, romania_pwid_hcv$hcv_test_rslt)
+# print(romania_pwid_hcv_summary)
 
-# create hcv testing dataframe
-romania_pwid_hcv_test <- subset(romania_pwid_hcv, select = c(id, appointment_dte, hcv_test_seq, hcv_test_rslt)) 
+# # create hcv testing dataframe
+# romania_pwid_hcv_test <- subset(romania_pwid_hcv, select = c(id, appointment_dte, hcv_test_seq, hcv_test_rslt)) 
 
-# create lag of appointment dates and hcv tests
-romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
-  arrange(id, hcv_test_seq) %>%
-  group_by(id) %>%
-  mutate(appointment_dte_lag = lead(appointment_dte),
-         hcv_test_rslt_lag = lead(hcv_test_rslt))
+# # create lag of appointment dates and hcv tests
+# romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
+#   arrange(id, hcv_test_seq) %>%
+#   group_by(id) %>%
+#   mutate(appointment_dte_lag = lead(appointment_dte),
+#          hcv_test_rslt_lag = lead(hcv_test_rslt))
 
-# remove empty rows
-romania_pwid_hcv_test <- romania_pwid_hcv_test[!is.na(romania_pwid_hcv_test$hcv_test_rslt_lag), ]
+# # remove empty rows
+# romania_pwid_hcv_test <- romania_pwid_hcv_test[!is.na(romania_pwid_hcv_test$hcv_test_rslt_lag), ]
 
-# convert to dates
-romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
-  mutate(appointment_dte = as.Date(appointment_dte, format = "%d-%m-%Y")) %>%
-  mutate(appointment_dte_lag = as.Date(appointment_dte_lag, format = "%d-%m-%Y"))
+# # convert to dates
+# romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
+#   mutate(appointment_dte = as.Date(appointment_dte, format = "%d-%m-%Y")) %>%
+#   mutate(appointment_dte_lag = as.Date(appointment_dte_lag, format = "%d-%m-%Y"))
 
-# days at risk
-romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
-  mutate(days_risk = appointment_dte_lag-appointment_dte)
+# # days at risk
+# romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
+#   mutate(days_risk = appointment_dte_lag-appointment_dte)
 
-# change test results to 0 and 1
-romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
-  mutate(hcv_test_rslt_lag = case_when(
-    hcv_test_rslt_lag == 1 ~ 0,
-    hcv_test_rslt_lag == 2 ~ 1,
-    TRUE ~ hcv_test_rslt_lag
-  ))
-romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
-  mutate(hcv_test_rslt = case_when(
-    hcv_test_rslt == 1 ~ 0,
-    hcv_test_rslt == 2 ~ 1,
-    TRUE ~ hcv_test_rslt
-  ))
+# # change test results to 0 and 1
+# romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
+#   mutate(hcv_test_rslt_lag = case_when(
+#     hcv_test_rslt_lag == 1 ~ 0,
+#     hcv_test_rslt_lag == 2 ~ 1,
+#     TRUE ~ hcv_test_rslt_lag
+#   ))
+# romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
+#   mutate(hcv_test_rslt = case_when(
+#     hcv_test_rslt == 1 ~ 0,
+#     hcv_test_rslt == 2 ~ 1,
+#     TRUE ~ hcv_test_rslt
+#   ))
 
-# rename hcv variables
-romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
-  rename(
-    hcv_baseline = hcv_test_rslt,
-    hcv_test_rslt = hcv_test_rslt_lag
-  )
+# # rename hcv variables
+# romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
+#   rename(
+#     hcv_baseline = hcv_test_rslt,
+#     hcv_test_rslt = hcv_test_rslt_lag
+#   )
 
-# QA for rows where appointment_dte_lag is less than appointment_dte
-invalid_rows <- romania_pwid_hcv_test %>%
-  filter(appointment_dte_lag < appointment_dte)
-cat("Number of rows where appointment_dte_lag is less than appointment_dte:", nrow(invalid_rows), "\n")
+# # QA for rows where appointment_dte_lag is less than appointment_dte
+# invalid_rows <- romania_pwid_hcv_test %>%
+#   filter(appointment_dte_lag < appointment_dte)
+# cat("Number of rows where appointment_dte_lag is less than appointment_dte:", nrow(invalid_rows), "\n")
 
-# Save testing data
-write.csv(romania_pwid_hcv_test, "romania_pwid_hcv_test.csv")
+# romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
+#   mutate(
+#     appointment_dte = as.Date(appointment_dte),
+#     appointment_dte_lag = as.Date(appointment_dte_lag)
+#   )
+
+# # Save testing data
+# write.csv(romania_pwid_hcv_test, "romania_pwid_hcv_test.csv")
+
+# load testing data
+romania_pwid_hcv_test <- read.csv("romania_pwid_hcv_test.csv", stringsAsFactors = FALSE)
 
 # ### bootstrapping
 # View(romania_pwid_hcv_test)
 
-# # Filter to include BOTH seroconverters AND non-seroconverters
-# df_all_participants <- romania_pwid_hcv_test %>%
-#   filter(hcv_test_rslt == 1) %>%  # Include both negative (0) and positive (1) results
-#   filter(!is.na(appointment_dte_lag)) %>%  # Previous appointment exists
-#   filter(appointment_dte_lag > appointment_dte) %>%  # Lag date should be AFTER current date
-#   filter(as.numeric(appointment_dte_lag - appointment_dte) > 0)  # Positive time interval
-
-# cat("Total participants (seroconverters + non-seroconverters):", nrow(df_all_participants), "\n")
-# cat("Number of seroconverters:", sum(df_all_participants$hcv_test_rslt == 1), "\n")
-# cat("Number of non-seroconverters:", sum(df_all_participants$hcv_test_rslt == 0), "\n")
+# Filter to include seroconverters 
+df_seroconverters <- romania_pwid_hcv_test %>%
+  filter(hcv_test_rslt == 1) %>%  # Include both negative (0) and positive (1) results
+  filter(!is.na(appointment_dte_lag)) %>%  # Previous appointment exists
+  filter(appointment_dte_lag > appointment_dte) %>%  # Lag date should be AFTER current date
+  filter(as.numeric(appointment_dte_lag - appointment_dte) > 0)  # Positive time interval
 
 # bootstrap_incidence <- function(data) {
 #   resample <- data %>% sample_n(size = nrow(data), replace = TRUE)
@@ -231,7 +236,7 @@ write.csv(romania_pwid_hcv_test, "romania_pwid_hcv_test.csv")
 ### code run at 4pm today
 
 # # Bootstrap function with random infection dates
-# bootstrap_incidence_random <- function(data, n_infection_samples = 10) {
+# bootstrap_incidence_random <- function(data, n_infection_samples = 100) {
 #   resample <- data %>% sample_n(size = nrow(data), replace = TRUE)
   
 #   # For each seroconverter, sample n_infection_samples random infection dates and average person-time
@@ -258,7 +263,7 @@ write.csv(romania_pwid_hcv_test, "romania_pwid_hcv_test.csv")
 
 # # Run bootstrap with random infection dates (100 iterations for speed)
 # set.seed(42)
-# bootstrap_results <- replicate(100, bootstrap_incidence_random(df_all_participants, n_infection_samples = 10))
+# bootstrap_results <- replicate(100, bootstrap_incidence_random(df_seroconverters, n_infection_samples = 10))
 
 # # Summarize results
 # ir_mean <- mean(bootstrap_results, na.rm = TRUE)
@@ -270,47 +275,59 @@ write.csv(romania_pwid_hcv_test, "romania_pwid_hcv_test.csv")
 
 
 
-# ### bootstrap with forloop to show progress
+### bootstrap with forloop 
 
-# # Bootstrap function with random infection dates
-# bootstrap_incidence_random <- function(data, n_infection_samples = 10) {
-#   resample <- data %>% sample_n(size = nrow(data), replace = TRUE)
-#   resample <- resample %>%
-#     rowwise() %>%
-#     mutate(
-#       pt = if (hcv_test_rslt == 1) {
-#         mean(
-#           sapply(1:n_infection_samples, function(x) {
-#             infection_date <- as.Date(runif(1, min = as.numeric(appointment_dte), max = as.numeric(appointment_dte_lag)), origin = "1970-01-01")
-#             max(as.numeric(infection_date - appointment_dte), 1)
-#           })
-#         )
-#       } else {
-#         max(as.numeric(appointment_dte_lag - appointment_dte), 1)
-#       }
-#     ) %>%
-#     ungroup()
-#   total_pt <- sum(resample$pt)
-#   cases <- sum(resample$hcv_test_rslt == 1)
-#   (cases / total_pt) * 365.25 * 100
-# }
+# Bootstrap function with random infection dates
+bootstrap_incidence_random <- function(data, n_infection_samples) {
+  resample <- data %>% sample_n(size = nrow(data), replace = TRUE)
+  resample <- resample %>%
+    rowwise() %>%
+    mutate(
+      pt = if (hcv_test_rslt == 1) {
+        mean(
+          sapply(1:n_infection_samples, function(x) {
+            infection_date <- as.Date(runif(1, min = as.numeric(appointment_dte), max = as.numeric(appointment_dte_lag)), origin = "1970-01-01")
+            max(as.numeric(infection_date - appointment_dte), 1)
+          })
+        )
+      } else {
+        max(as.numeric(appointment_dte_lag - appointment_dte), 1)
+      }
+    ) %>%
+    ungroup()
+  total_pt <- sum(resample$pt)
+  cases <- sum(resample$hcv_test_rslt == 1)
+  (cases / total_pt) * 365.25 * 100
+}
 
-# # Run bootstrap with progress messages
-# set.seed(42)
-# n_boot <- 100
-# bootstrap_results <- numeric(n_boot)
-# for (i in 1:n_boot) {
-#   bootstrap_results[i] <- bootstrap_incidence_random(df_all_participants, n_infection_samples = 10)
-#   cat("Completed bootstrap:", i, "of", n_boot, "\n")
-# }
+# Run bootstrap with progress messages
+set.seed(42)
+n_boot <- 1000
+n_infection_samples <- 1000
+bootstrap_results <- numeric(n_boot)
+for (i in 1:n_boot) {
+  bootstrap_results[i] <- bootstrap_incidence_random(romania_pwid_hcv_test, n_infection_samples)
+  cat("Completed bootstrap:", i, "of", n_boot, "\n")
+}
 
-# # Summarize results
-# ir_mean <- mean(bootstrap_results, na.rm = TRUE)
-# ir_lower <- quantile(bootstrap_results, 0.025, na.rm = TRUE)
-# ir_upper <- quantile(bootstrap_results, 0.975, na.rm = TRUE)
+# Summarize results
+ir_mean <- mean(bootstrap_results, na.rm = TRUE)
+ir_lower <- quantile(bootstrap_results, 0.025, na.rm = TRUE)
+ir_upper <- quantile(bootstrap_results, 0.975, na.rm = TRUE)
 
-# cat(sprintf("Incidence rate: %.2f per 100 person-years (95%% CI: %.2f – %.2f)\n",
-#             ir_mean, ir_lower, ir_upper))
+cat(sprintf("Incidence rate: %.2f per 100 person-years (95%% CI: %.2f – %.2f)\n",
+            ir_mean, ir_lower, ir_upper))
+
+
+
+
+
+
+
+
+
+
+
 
 
 
