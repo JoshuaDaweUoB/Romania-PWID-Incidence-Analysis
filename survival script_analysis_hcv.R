@@ -505,6 +505,33 @@ View(final_summed_df_two_yearly)
 cat("Columns in final_summed_df_two_yearly:\n")
 print(colnames(final_summed_df_two_yearly))
 
+# Rubin's rules for two-year intervals
+intervals <- c("2013_2014", "2015_2016", "2017_2018", "2019_2020", "2021_2022")
+rubin_results <- lapply(intervals, function(interval) {
+  rates <- final_summed_df_two_yearly[[paste0("incidence_rate_", interval)]]
+  rates <- rates[!is.na(rates)]
+  M <- length(rates)
+  mean_ir <- mean(rates)
+  between_var <- var(rates)
+  within_var <- 0 # If you have within-imputation variance, use mean of those here
+  total_var <- within_var + (1 + 1/M) * between_var
+  se_total <- sqrt(total_var)
+  ci_lower <- mean_ir - 1.96 * se_total
+  ci_upper <- mean_ir + 1.96 * se_total
+  data.frame(
+    Interval = gsub("_", "-", interval),
+    Mean_Incidence_rate = mean_ir,
+    Rubin_Lower_95CI = ci_lower,
+    Rubin_Upper_95CI = ci_upper
+  )
+})
+rubin_results_df <- do.call(rbind, rubin_results)
+
+cat("Rubin's rules results for two-year intervals:\n")
+print(rubin_results_df)
+View(rubin_results_df)
+
+
 # Calculate the median incidence rates for each two-year interval
 two_yearly_medians <- sapply(c("2013_2014", "2015_2016", "2017_2018", "2019_2020", "2021_2022"), function(interval) {
   if (paste0("incidence_rate_", interval) %in% colnames(final_summed_df_two_yearly)) {
