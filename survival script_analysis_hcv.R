@@ -443,6 +443,55 @@ View(results_df)
 # Save the overall incidence results to a CSV file
 write.csv(results_df, "overall_incidence_results_df.csv", row.names = TRUE)
 
+# # ### bootstrapping
+
+# # Bootstrap function with random infection dates
+# bootstrap_incidence_random <- function(data, n_infection_samples) {
+#   resample <- data %>% sample_n(size = nrow(data), replace = TRUE)
+#   resample <- resample %>%
+#     rowwise() %>%
+#     mutate(
+#       pt = if (hcv_test_rslt == 1) {
+#         mean(
+#           sapply(1:n_infection_samples, function(x) {
+#             infection_date <- as.Date(runif(1, min = as.numeric(appointment_dte), max = as.numeric(appointment_dte_lag)), origin = "1970-01-01")
+#             max(as.numeric(infection_date - appointment_dte), 1)
+#           })
+#         )
+#       } else {
+#         max(as.numeric(appointment_dte_lag - appointment_dte), 1)
+#       }
+#     ) %>%
+#     ungroup()
+#   total_pt <- sum(resample$pt)
+#   cases <- sum(resample$hcv_test_rslt == 1)
+#   (cases / total_pt) * 365.25 * 100
+# }
+
+# # Run bootstrap with progress messages
+# set.seed(42)
+# n_boot <- 1000
+# n_infection_samples <- 1000
+# bootstrap_results <- numeric(n_boot)
+# for (i in 1:n_boot) {
+#   bootstrap_results[i] <- bootstrap_incidence_random(romania_pwid_hcv_test, n_infection_samples)
+#   cat("Completed bootstrap:", i, "of", n_boot, "\n")
+# }
+
+# # Summarize results
+# ir_mean <- mean(bootstrap_results, na.rm = TRUE)
+# ir_lower <- quantile(bootstrap_results, 0.025, na.rm = TRUE)
+# ir_upper <- quantile(bootstrap_results, 0.975, na.rm = TRUE)
+
+# cat(sprintf("Incidence rate: %.2f per 100 person-years (95%% CI: %.2f – %.2f)\n",
+#             ir_mean, ir_lower, ir_upper))
+
+# # Save as CSV
+# write.csv(bootstrap_results, "bootstrap_results.csv", row.names = FALSE)
+
+# # Save as RDS (recommended for R objects)
+# saveRDS(bootstrap_results, "bootstrap_results.rds")
+
 # Create 1000 dataframes of summed two-year intervals for person-years and incident cases
 
 # Initialize an empty list to store the summed dataframes
