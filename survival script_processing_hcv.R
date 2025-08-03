@@ -4,111 +4,120 @@ pacman::p_load(dplyr, tidyr, withr, lubridate, MASS, writexl, readxl, arsenal, s
 ## set wd
 setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/Romania PWID/data")
 
-# ## load data
-# romania_pwid_raw <- read_excel("ARAS DATA IDU 2013-2022.xlsx")
+## load data
+romania_pwid_raw <- read_excel("ARAS DATA IDU 2013-2022.xlsx")
 
-# ## baseline HCV cohort
+## baseline HCV cohort
 
-# # remove rows where hiv test result is missing
-# romania_pwid_hcv <- romania_pwid_raw[!is.na(romania_pwid_raw$hcv_test_rslt), ]
+# remove rows where hcv test result is missing
+romania_pwid_hcv <- romania_pwid_raw[!is.na(romania_pwid_raw$hcv_test_rslt), ]
 
-# # remove rows where hiv test result is indeterminate
-# romania_pwid_hcv <- romania_pwid_hcv %>%
-#   filter(!hcv_test_rslt == 3)
+# remove rows where hcv test result is indeterminate
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  filter(!hcv_test_rslt == 3)
 
-# # sequence by id 
-# romania_pwid_hcv <- romania_pwid_hcv %>%
-#   arrange(id) %>%  # Ensure rows are sorted by id
-#   mutate(id_seq = cumsum(!duplicated(id)))  # Increment by 1 for each new id
+# sequence by id 
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  arrange(id) %>%
+  mutate(id_seq = cumsum(!duplicated(id))) 
 
-# View(romania_pwid_hcv)
+# create sequence of visits by id
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  group_by(id) %>%
+  arrange(id, appointment_dte) %>%
+  mutate(appointment_seq = row_number())
+romania_pwid_hcv <- ungroup(romania_pwid_hcv)
 
-# # Find the highest value in the id_seq column
-# highest_id_seq <- romania_pwid_hcv %>%
-#   summarise(max_id_seq = max(id_seq, na.rm = TRUE))
+# HCV test results
+romania_pwid_hcv_rslts <- table(romania_pwid_hcv$hcv_test_rslt)
+print(romania_pwid_hcv_rslts)
 
-# # Print the result
-# cat("Highest value in id_seq:\n")
-# print(highest_id_seq)
+# identify ids positive at baseline
+positive_at_baseline <- romania_pwid_hcv %>%
+  filter(appointment_seq == 1 & hcv_test_rslt == 2) %>%
+  pull(id)
 
-# # create sequence of visits by ID
-# romania_pwid_hcv <- romania_pwid_hcv %>%
-#   group_by(id) %>%
-#   arrange(id, appointment_dte) %>%
-#   mutate(appointment_seq = row_number())
+# include ids where positive at baseline
+positive_at_baseline_df <- romania_pwid_hcv %>%
+  filter((id %in% positive_at_baseline))
 
-# romania_pwid_hcv <- ungroup(romania_pwid_hcv)
+# HCV test results by visit
+positive_at_baseline_df_summary <- table(positive_at_baseline_df$hcv_test_rslt)
+print(positive_at_baseline_df_summary)
 
-# # HCV test results by visit
-# romania_pwid_hcv_summary <- table(romania_pwid_hcv$hcv_test_rslt)
-# print(romania_pwid_hcv_summary)
+# remove ids where positive at baseline
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  filter(!(id %in% positive_at_baseline))
 
-# # remove IDs where hcv positive at baseline
-# ids_to_remove <- romania_pwid_hcv %>%
-#   filter(appointment_seq == 1 & hcv_test_rslt == 2) %>%
-#   pull(id)
+# sequence by id 
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  arrange(id) %>%
+  mutate(id_seq = cumsum(!duplicated(id)))
 
-# romania_pwid_hcv <- romania_pwid_hcv %>%
-#   filter(!(id %in% ids_to_remove))
+# Find the highest value in the id_seq column
+highest_id_seq <- romania_pwid_hcv %>%
+  summarise(max_id_seq = max(id_seq, na.rm = TRUE))
 
-# # sequence by id 
-# romania_pwid_hcv <- romania_pwid_hcv %>%
-#   arrange(id) %>%  # Ensure rows are sorted by id
-#   mutate(id_seq = cumsum(!duplicated(id)))  # Increment by 1 for each new id
+# Print the result
+cat("Highest value in id_seq:\n")
+print(highest_id_seq)
 
-# # Find the highest value in the id_seq column
-# highest_id_seq <- romania_pwid_hcv %>%
-#   summarise(max_id_seq = max(id_seq, na.rm = TRUE))
+# HCV test results by visit
+romania_pwid_hcv_summary <- table(romania_pwid_hcv$appointment_seq, romania_pwid_hcv$hcv_test_rslt)
+print(romania_pwid_hcv_summary) 
 
-# # Print the result
-# cat("Highest value in id_seq:\n")
-# print(highest_id_seq)
+# sequence hcv tests by id
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  group_by(id) %>%
+  arrange(id) %>%
+  mutate(hcv_test_seq = row_number())
 
-# # HCV test results by visit
-# romania_pwid_hcv_summary <- table(romania_pwid_hcv$appointment_seq, romania_pwid_hcv$hcv_test_rslt)
-# print(romania_pwid_hcv_summary) 
+# HCV test results by test number
+romania_pwid_hcv_summary <- table(romania_pwid_hcv$hcv_test_seq, romania_pwid_hcv$hcv_test_rslt)
+print(romania_pwid_hcv_summary)
 
-# # restrict to participants with multiple tests
-# romania_pwid_hcv <- romania_pwid_hcv %>%
-#   group_by(id) %>%
-#   arrange(id) %>%
-#   mutate(hcv_test_seq = row_number())
+# remove participants with only one test
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  group_by(id) %>%
+  filter(!(max(hcv_test_seq, na.rm = TRUE) == 1)) %>%
+  ungroup()
 
-# # HCV test results by visit
-# romania_pwid_hcv_summary <- table(romania_pwid_hcv$hcv_test_seq, romania_pwid_hcv$hcv_test_rslt)
-# print(romania_pwid_hcv_summary)
+# new id sequence
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  arrange(id) %>%
+  mutate(id_seq = cumsum(!duplicated(id)))
 
-# # remove participants with only one test
-# romania_pwid_hcv <- romania_pwid_hcv %>%
-#   group_by(id) %>%
-#   filter(!(max(hcv_test_seq, na.rm = TRUE) == 1)) %>%
-#   ungroup()
+# Find the highest value in the id_seq column
+highest_id_seq <- romania_pwid_hcv %>%
+  summarise(max_id_seq = max(id_seq, na.rm = TRUE))
 
-# # sequence by id 
-# romania_pwid_hcv <- romania_pwid_hcv %>%
-#   arrange(id) %>%  # Ensure rows are sorted by id
-#   mutate(id_seq = cumsum(!duplicated(id)))  # Increment by 1 for each new id
+# number of ids
+cat("Highest value in id_seq:\n")
+print(highest_id_seq)
 
-# # Find the highest value in the id_seq column
-# highest_id_seq <- romania_pwid_hcv %>%
-#   summarise(max_id_seq = max(id_seq, na.rm = TRUE))
+# HCV test results by test number
+romania_pwid_hcv_summary <- table(romania_pwid_hcv$hcv_test_seq, romania_pwid_hcv$hcv_test_rslt)
+print(romania_pwid_hcv_summary) 
 
-# # Print the result
-# cat("Highest value in id_seq:\n")
-# print(highest_id_seq)
+# create dataframe of individuals who tested after first positive
+romania_pwid_hcv_after_pos <- romania_pwid_hcv %>%
+  group_by(id) %>%
+  mutate(
+    first_hcv_positive_dte = ifelse(hcv_test_rslt == 2, appointment_dte, NA),
+    first_hcv_positive_dte = if (all(is.na(first_hcv_positive_dte))) NA else min(first_hcv_positive_dte, na.rm = TRUE)
+  ) %>%
+  ungroup() %>%
+  filter(!is.na(first_hcv_positive_dte) & appointment_dte > first_hcv_positive_dte)
 
-# # HCV test results by visit
-# romania_pwid_hcv_summary <- table(romania_pwid_hcv$hcv_test_seq, romania_pwid_hcv$hcv_test_rslt)
-# print(romania_pwid_hcv_summary) 
-
-# # Remove HCV tests after the first positive
-# romania_pwid_hcv <- romania_pwid_hcv %>%
-#   group_by(id) %>%
-#   mutate(
-#     first_hcv_positive_dte = ifelse(hcv_test_rslt == 2, appointment_dte, NA),
-#     first_hcv_positive_dte = if (all(is.na(first_hcv_positive_dte))) NA else min(first_hcv_positive_dte, na.rm = TRUE)
-#   ) %>%
-#   ungroup()
+View(romania_pwid_hcv_after_pos)
+# remove HCV tests after the first positive
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  group_by(id) %>%
+  mutate(
+    first_hcv_positive_dte = ifelse(hcv_test_rslt == 2, appointment_dte, NA),
+    first_hcv_positive_dte = if (all(is.na(first_hcv_positive_dte))) NA else min(first_hcv_positive_dte, na.rm = TRUE)
+  ) %>%
+  ungroup()
 
 # # Filter rows to keep only those before or on the first positive test date
 # romania_pwid_hcv <- romania_pwid_hcv %>%
