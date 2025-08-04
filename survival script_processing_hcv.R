@@ -180,21 +180,22 @@ romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
     appointment_dte_lag = as.Date(appointment_dte_lag)
   )
 
+# date format 
+romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
+  mutate(
+    appointment_dte = as.Date(appointment_dte),
+    appointment_dte_lag = as.Date(appointment_dte_lag)
+  )
+
 # Save testing data
 write.csv(romania_pwid_hcv_test, "romania_pwid_hcv_test.csv")
 
-# load testing data
-romania_pwid_hcv_test <- read.csv("romania_pwid_hcv_test.csv", stringsAsFactors = FALSE)
-
 #### random-point sampling with 1000 iterations approach ####
 
-View(romania_pwid_hcv_test)
 # generate random infection dates
 romania_pwid_hcv_test_iterations <- romania_pwid_hcv_test %>%
-  filter(hcv_test_rslt == 1) %>%
   rowwise() %>%
   mutate(
-    # generate 1000 random infection dates
     random_infection_dtes = list(
       as.Date(
         runif(1000,
@@ -207,11 +208,11 @@ romania_pwid_hcv_test_iterations <- romania_pwid_hcv_test %>%
   unnest_longer(random_infection_dtes) %>%
   group_by(id) %>%
   mutate(
-    iteration = rep(1:1000, each = n() / 1000),  # create iteration groups
-    days_risk = as.numeric(random_infection_dtes - appointment_dte),  # days at risk
-    person_years = days_risk / 365.25,  # convert days at risk to person-years
-    midpoint_year = year(random_infection_dtes),  # extract the year from random_infection_dtes
-    appointment_dte_lag = random_infection_dtes  # set appointment_dte_lag to random_infection_dtes
+    iteration = rep(1:1000, each = n() / 1000),
+    days_risk = as.numeric(random_infection_dtes - appointment_dte),
+    person_years = days_risk / 365.25,
+    midpoint_year = year(random_infection_dtes),
+    appointment_dte_lag = random_infection_dtes
   ) %>%
   ungroup()
 
@@ -244,28 +245,20 @@ split_dataframes <- lapply(split_dataframes, function(df) {
   return(combined_df)
 })
 
-# view the first and last dataframe for QA 
-View(split_dataframes[["iteration_1"]])
-View(split_dataframes[["iteration_1000"]])
+# list to store the results
+processed_dataframes_hcv <- list()
 
-# Initialize an empty list to store the results
-processed_dataframes <- list()
-
-# Define the years for which we need to create columns
+# years to create columns
 required_years <- 2013:2022
 
-# Loop through the first 1000 iterations
+# loop 1000 iterations
 for (i in 1:1000) {
   cat("Processing iteration", i, "of", 1000, "\n")
   
-  # Get the dataframe for the current iteration
+  # dataframe for the current iteration
   df <- split_dataframes[[i]]
   
-  # Print the initial dataframe for debugging
-  cat("Initial dataframe:\n")
-  print(head(df))
-  
-  # Calculate person-years for each year of observation
+  # person-years for each year of observation
   person_years_df <- df %>%
     rowwise() %>%
     mutate(
@@ -287,18 +280,14 @@ for (i in 1:1000) {
     }) %>%
     ungroup()
   
-  # Print the person_years_df for debugging
-  cat("Person years dataframe:\n")
-  print(head(person_years_df))
-  
-  # Check if person_years_df is empty
+  # check person_years_df is empty
   if (nrow(person_years_df) == 0) {
     cat("person_years_df is empty for iteration", i, "\n")
-    processed_dataframes[[i]] <- NULL
+    processed_dataframes_hcv[[i]] <- NULL
     next
   }
   
-  # Merge the person_years_df with the original dataframe
+  # merge the person_years_df with the original dataframe
   df <- bind_cols(df, person_years_df)
   
   # Ensure all required columns are present
@@ -315,7 +304,7 @@ for (i in 1:1000) {
     df[[column_name]] <- ifelse(df$midpoint_year == year & df$hcv_test_rslt == 1, 1, df[[column_name]])
   }
   
-  # Ensure all required person-year columns are present
+  # person-year columns are present
   for (year in required_years) {
     if (!(as.character(year) %in% names(df))) {
       df[[as.character(year)]] <- 0
@@ -324,38 +313,31 @@ for (i in 1:1000) {
   
   # Print the final dataframe for debugging
   cat("Final dataframe:\n")
-  print(head(df))
   
   # Store the processed dataframe in the list
-  processed_dataframes[[i]] <- df
+  processed_dataframes_hcv[[i]] <- df
 }
 
 # create year variable
-for (i in 1:length(processed_dataframes)) {
+for (i in 1:length(processed_dataframes_hcv)) {
   # Get the processed dataframe for the current iteration
-  df <- processed_dataframes[[i]]
+  df <- processed_dataframes_hcv[[i]]
   
-  # Create a new column 'year' by extracting the year from 'appointment_dte_lag'
+  # year column
   df <- df %>%
     mutate(year = as.numeric(format(appointment_dte_lag, "%Y")))
   
-  # Convert 'year' to a factor to treat it as a categorical variable
+  # factor year
   df$year <- as.factor(df$year)
   
-  # Store the updated dataframe back in the list
-  processed_dataframes[[i]] <- df
+  # store
+  processed_dataframes_hcv[[i]] <- df
 }
 
-# View the first dataframe for QA
-View(processed_dataframes[[1]])
+# first processed dataframe
+df <- processed_dataframes_hcv[[1]]
 
-# View the last dataframe for QA
-View(processed_dataframes[[1000]])
-
-# Get the first processed dataframe
-df <- processed_dataframes[[1]]
-
-# Create a histogram of the person_years column
+# histogram of person_years
 ggplot(df, aes(x = person_years)) +
   geom_histogram(binwidth = 0.1, fill = "blue", color = "black", alpha = 0.7) +
   labs(title = "Histogram of Person Years",
@@ -363,77 +345,18 @@ ggplot(df, aes(x = person_years)) +
        y = "Frequency") +
   theme_minimal()
 
-# Save the list of processed dataframes to a file
-saveRDS(processed_dataframes, file = "processed_dataframes.rds")
+# save wide dataframes
+saveRDS(processed_dataframes_hcv, file = "processed_dataframes_hcv.rds")
 
-# Subset romania_pwid_hcv to include only rows that match id, appointment_dte, and hcv_test_seq in romania_pwid_hcv_test
-romania_pwid_hcv_exposure <- romania_pwid_hcv %>%
-  semi_join(romania_pwid_hcv_test, by = c("id", "appointment_dte", "hcv_test_seq")) %>%
-  dplyr::select(id, appointment_dte, hcv_test_seq, gender, dob, sex_work_current,
-                msm_current, homeless_current, ethnic_roma) %>%
-  mutate(
-    sex_work_current = ifelse(is.na(sex_work_current), 0, sex_work_current),
-    msm_current = ifelse(is.na(msm_current), 0, msm_current),
-    homeless_current = ifelse(is.na(homeless_current), 0, homeless_current),
-    ethnic_roma = ifelse(is.na(ethnic_roma), 0, ethnic_roma),
-    msm_current = ifelse(is.na(msm_current), 0, msm_current),
-    gender = ifelse(gender == 2, 0, gender)  # Recode gender from 2 to 0
-  )
-
-# Ensure dob is in the correct Date format
-romania_pwid_hcv_exposure <- romania_pwid_hcv_exposure %>%
-  mutate(dob = as.Date(dob, format = "%d/%m/%Y"))  # Convert dob to Date format
-
-# Generate age in years using dob and appointment_dte
-romania_pwid_hcv_exposure <- romania_pwid_hcv_exposure %>%
-  mutate(age_years = as.numeric(difftime(appointment_dte, dob, units = "days")) / 365.25)
-
-# merge with processed dataframes 
-
-# Define a function to merge exposure data with processed dataframes
-merge_with_exposure <- function(processed_dataframes, romania_pwid_hcv_exposure) {
-  # Ensure romania_pwid_hcv_exposure has no duplicate rows for id and appointment_dte
-  romania_pwid_hcv_exposure <- romania_pwid_hcv_exposure %>%
-    distinct(id, appointment_dte, .keep_all = TRUE)
-  
-  # Merge romania_pwid_hcv_exposure with each dataframe in processed_dataframes
-  processed_dataframes <- lapply(processed_dataframes, function(df) {
-    # Ensure df has no duplicate rows for id and appointment_dte
-    df <- df %>%
-      distinct(id, appointment_dte, .keep_all = TRUE)
-    
-    # Perform the left join with romania_pwid_hcv_exposure
-    merged_df <- left_join(df, romania_pwid_hcv_exposure, by = c("id", "appointment_dte"))
-    
-    # Remove duplicate columns (keep the columns from romania_pwid_hcv_exposure)
-    merged_df <- merged_df %>%
-      dplyr::select(-ends_with(".x")) %>%  # Remove columns ending with ".x" (from the original dataframe)
-      rename_with(~ gsub("\\.y$", "", .), ends_with(".y"))  # Remove ".y" suffix from merged columns
-    
-    return(merged_df)
-  })
-  
-  return(processed_dataframes)
-}
-
-# Example usage of the function
-processed_dataframes <- merge_with_exposure(processed_dataframes, romania_pwid_hcv_exposure)
-
-# Save the updated processed_dataframes to a file
-saveRDS(processed_dataframes, file = "processed_dataframes.rds")
-
-# View the first merged dataframe for QA
-View(processed_dataframes[[1]])
-
-# function to process each dataframe
+# function to reshape dataframes
 process_dataframe <- function(df) {
-  # Rename the existing "year" column (if it exists) to avoid duplication
+  # rename year column
   if ("year" %in% colnames(df)) {
     df <- df %>%
       rename(existing_year = year)
   }
   
-  # Reshape the columns X2013 to X2022 to long format
+  # reshape the columns X2013 to X2022 to long format
   df_long <- df %>%
     pivot_longer(cols = starts_with("X"), 
                  names_to = "year", 
@@ -441,36 +364,33 @@ process_dataframe <- function(df) {
                  values_to = "time_at_risk") %>%
     filter(!is.na(time_at_risk))  # Remove rows where time_at_risk is NA
   
-  # Recode hcv_test_rslt to 0 when it is invalid, NA, or year does not equal midpoint_year
+  # recode hcv_test_rslt to 0 when it is invalid, NA, or year does not equal midpoint_year
   df_long <- df_long %>%
     mutate(hcv_test_rslt = ifelse(is.na(hcv_test_rslt) | !is.numeric(hcv_test_rslt) | year != midpoint_year, 0, hcv_test_rslt))
   
-  # Keep only the specified columns
+  # keep only the specified columns
   df_long <- df_long %>%
     dplyr::select(id, hcv_test_rslt, appointment_dte, appointment_dte_lag, year, midpoint_year, time_at_risk)
   
-  # Sort by id and then by year
+  # sort by id and then by year
   df_long <- df_long %>%
     arrange(id, year)
   
   return(df_long)
 }
 
-# Load the dataframes
-processed_dataframes <- readRDS("processed_dataframes.rds")
+# load wide dataframes
+processed_dataframes_hcv <- readRDS("processed_dataframes_hcv.rds")
 
-# Verify that the dataframes are loaded correctly
-View(processed_dataframes[[1]])
-View(processed_dataframes[[1000]])
+# list to store long dataframes
+processed_dataframes_long_hcv <- list()
 
-# Initialize a list to store the processed dataframes
-processed_dataframes_long <- list()
-
-# Loop over all dataframes in processed_dataframes
-for (i in 1:length(processed_dataframes)) {
-  cat("Processing dataframe", i, "of", length(processed_dataframes), "\n")
-  processed_dataframes_long[[i]] <- process_dataframe(processed_dataframes[[i]])
+# loop over dataframes in processed_dataframes_hcv
+for (i in 1:length(processed_dataframes_hcv)) {
+  cat("Processing dataframe", i, "of", length(processed_dataframes_hcv), "\n")
+  processed_dataframes_long_hcv[[i]] <- process_dataframe(processed_dataframes_hcv[[i]])
 }
 
-# Save the list of long format processed dataframes to a file
-saveRDS(processed_dataframes_long, file = "processed_dataframes_long.rds")
+# save long dataframes
+saveRDS(processed_dataframes_long_hcv, file = "processed_dataframes_long_hcv.rds")
+
