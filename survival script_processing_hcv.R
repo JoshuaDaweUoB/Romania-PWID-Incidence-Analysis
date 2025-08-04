@@ -54,12 +54,9 @@ romania_pwid_hcv <- romania_pwid_hcv %>%
   arrange(id) %>%
   mutate(id_seq = cumsum(!duplicated(id)))
 
-# Find the highest value in the id_seq column
+# highest value in the id_seq column
 highest_id_seq <- romania_pwid_hcv %>%
   summarise(max_id_seq = max(id_seq, na.rm = TRUE))
-
-# Print the result
-cat("Highest value in id_seq:\n")
 print(highest_id_seq)
 
 # HCV test results by visit
@@ -190,7 +187,26 @@ romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
 # Save testing data
 write.csv(romania_pwid_hcv_test, "romania_pwid_hcv_test.csv")
 
-#### random-point sampling with 1000 iterations approach ####
+## overall incidence estimate
+# incident cases
+cases <- sum(romania_pwid_hcv_test$hcv_baseline == 0 & romania_pwid_hcv_test$hcv_test_rslt == 1, na.rm = TRUE)
+
+# person-time
+romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
+  mutate(py = as.numeric(appointment_dte_lag - appointment_dte) / 365.25)
+
+person_time <- sum(romania_pwid_hcv_test$py, na.rm = TRUE)
+
+# incidence per 100 PY
+ir <- (cases / person_time) * 100
+
+# 95% CI
+lower <- (qchisq(0.025, 2 * cases) / 2) / person_time * 100
+upper <- (qchisq(0.975, 2 * (cases + 1)) / 2) / person_time * 100
+
+cat("HCV Incidence Rate:", round(ir, 2), "per 100 PY (95% CI:", round(lower, 2), "-", round(upper, 2), ")\n")
+
+## random-point sampling with 1000 iterations approach
 
 # generate random infection dates
 romania_pwid_hcv_test_iterations <- romania_pwid_hcv_test %>%
