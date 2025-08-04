@@ -444,8 +444,14 @@ rubin_results <- lapply(intervals, function(interval) {
   rates <- rates[!is.na(rates)]
   M <- length(rates)
   mean_ir <- mean(rates)
-  between_var <- var(rates)
-  within_var <- 0 # If you have within-imputation variance, use mean of those here
+  
+  # Calculate standard error for each imputation
+  infections <- final_summed_df_two_yearly_hcv[[paste0("hcv_test_", interval)]]
+  person_years <- final_summed_df_two_yearly_hcv[[paste0("person_years_", interval)]]
+  se_vector <- sqrt(infections) / person_years * 100
+  
+  within_var <- mean(se_vector^2, na.rm = TRUE)
+  between_var <- var(rates, na.rm = TRUE)
   total_var <- within_var + (1 + 1/M) * between_var
   se_total <- sqrt(total_var)
   ci_lower <- mean_ir - 1.96 * se_total
@@ -457,68 +463,9 @@ rubin_results <- lapply(intervals, function(interval) {
     Rubin_Upper_95CI = ci_upper
   )
 })
+
 rubin_results_df_hcv <- do.call(rbind, rubin_results)
 print(rubin_results_df_hcv)
-
-# calculate the mean incidence rates for each two-year interval
-two_yearly_means_hcv <- sapply(c("2013_2014", "2015_2016", "2017_2018", "2019_2020", "2021_2022"), function(interval) {
-  if (paste0("incidence_rate_", interval) %in% colnames(final_summed_df_two_yearly_hcv)) {
-    mean(final_summed_df_two_yearly_hcv[[paste0("incidence_rate_", interval)]], na.rm = TRUE)
-  } else {
-    NA
-  }
-})
-print(two_yearly_means_hcv)
-
-# calculate means for HCV infections and person-years for each two-year interval
-mean_hcv_infections_two_yearly_hcv <- sapply(
-  c("2013_2014", "2015_2016", "2017_2018", "2019_2020", "2021_2022"),
-  function(interval) {
-    colname <- paste0("hcv_test_", interval)
-    if (colname %in% colnames(final_summed_df_two_yearly_hcv)) {
-      mean(final_summed_df_two_yearly_hcv[[colname]], na.rm = TRUE)
-    } else {
-      NA
-    }
-  }
-)
-
-mean_person_years_two_yearly_hcv <- sapply(
-  c("2013_2014", "2015_2016", "2017_2018", "2019_2020", "2021_2022"),
-  function(interval) {
-    colname <- paste0("person_years_", interval)
-    if (colname %in% colnames(final_summed_df_two_yearly_hcv)) {
-      mean(final_summed_df_two_yearly_hcv[[colname]], na.rm = TRUE)
-    } else {
-      NA
-    }
-  }
-)
-
-# calculate lower and upper bounds for each two-year interval
-two_yearly_lower_bounds_hcv <- sapply(
-  c("2013_2014", "2015_2016", "2017_2018", "2019_2020", "2021_2022"),
-  function(interval) {
-    colname <- paste0("incidence_rate_", interval)
-    if (colname %in% colnames(final_summed_df_two_yearly_hcv)) {
-      quantile(final_summed_df_two_yearly_hcv[[colname]], 0.025, na.rm = TRUE)
-    } else {
-      NA
-    }
-  }
-)
-
-two_yearly_upper_bounds_hcv <- sapply(
-  c("2013_2014", "2015_2016", "2017_2018", "2019_2020", "2021_2022"),
-  function(interval) {
-    colname <- paste0("incidence_rate_", interval)
-    if (colname %in% colnames(final_summed_df_two_yearly_hcv)) {
-      quantile(final_summed_df_two_yearly_hcv[[colname]], 0.975, na.rm = TRUE)
-    } else {
-      NA
-    }
-  }
-)
 
 # new dataframe with the two-year interval results using means
 results_df_two_yearly_mean_hcv <- data.frame(
@@ -530,11 +477,34 @@ results_df_two_yearly_mean_hcv <- data.frame(
   Mean_person_years = mean_person_years_two_yearly_hcv
 )
 
-# save two-year interval results
-write.csv(results_df_two_yearly_mean_hcv, "results_df_two_yearly_mean_hcv.csv", row.names = FALSE)
+  person_years <- final_summed_df_two_yearly_hcv[[paste0("person_years_", interval)]]
+  se_vector <- sqrt(infections) / person_years * 100
+  
+  within_var <- mean(se_vector^2, na.rm = TRUE)
+  between_var <- var(rates, na.rm = TRUE)
+  total_var <- within_var + (1 + 1/M) * between_var
+  se_total <- sqrt(total_var)
+  ci_lower <- mean_ir - 1.96 * se_total
+  ci_upper <- mean_ir + 1.96 * se_total
+  data.frame(
+    Interval = gsub("_", "-", interval),
+    Incidence_rate = mean_ir,
+    Lower_bound = ci_lower,
+    Upper_bound = ci_upper,
+    Mean_HCV_infections = mean(infections, na.rm = TRUE),
+    Mean_person_years = mean(person_years, na.rm = TRUE)
+  )
+})
 
-# figure of incidence over time (means)
-HCV_incidence_plot_mean <- ggplot(results_df_two_yearly_mean_hcv, aes(x = Interval, y = Incidence_rate)) +
+# combine Rubin's results into a dataframe
+results_df_two_yearly_rubin_hcv <- do.call(rbind, rubin_results)
+print(results_df_two_yearly_rubin_hcv)
+
+# save two-year interval results
+write.csv(results_df_two_yearly_rubin_hcv, "results_df_two_yearly_rubin_hcv.csv", row.names = FALSE)
+
+# hcv incidence over time
+HCV_incidence_plot_rubin <- ggplot(results_df_two_yearly_rubin_hcv, aes(x = Interval, y = Incidence_rate)) +
   geom_line(group = 1, color = "gray") + 
   geom_point(shape = 18, size = 3, color = "gray") + 
   geom_errorbar(aes(ymin = Lower_bound, ymax = Upper_bound), width = 0.2, color = "black") +
@@ -551,4 +521,4 @@ HCV_incidence_plot_mean <- ggplot(results_df_two_yearly_mean_hcv, aes(x = Interv
     plot.background = element_rect(fill = "white", color = NA)
   )
 
-ggsave("plots/HCV_incidence_plot_mean.png", plot = HCV_incidence_plot_mean, width = 8, height = 6, dpi = 300)
+ggsave("plots/HCV_incidence_plot_rubin.png", plot = HCV_incidence_plot_rubin, width = 8, height = 6, dpi = 300)

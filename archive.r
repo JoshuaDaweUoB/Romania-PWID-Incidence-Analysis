@@ -1351,6 +1351,66 @@ View(processed_dataframes_hcv[[1]])
 # write.csv(summary_table_female, "cox_regression_summary_table_female.csv", row.names = FALSE)
 
 
+# calculate the mean incidence rates for each two-year interval
+two_yearly_means_hcv <- sapply(c("2013_2014", "2015_2016", "2017_2018", "2019_2020", "2021_2022"), function(interval) {
+  if (paste0("incidence_rate_", interval) %in% colnames(final_summed_df_two_yearly_hcv)) {
+    mean(final_summed_df_two_yearly_hcv[[paste0("incidence_rate_", interval)]], na.rm = TRUE)
+  } else {
+    NA
+  }
+})
+print(two_yearly_means_hcv)
+
+# calculate means for HCV infections and person-years for each two-year interval
+mean_hcv_infections_two_yearly_hcv <- sapply(
+  c("2013_2014", "2015_2016", "2017_2018", "2019_2020", "2021_2022"),
+  function(interval) {
+    colname <- paste0("hcv_test_", interval)
+    if (colname %in% colnames(final_summed_df_two_yearly_hcv)) {
+      mean(final_summed_df_two_yearly_hcv[[colname]], na.rm = TRUE)
+    } else {
+      NA
+    }
+  }
+)
+
+mean_person_years_two_yearly_hcv <- sapply(
+  c("2013_2014", "2015_2016", "2017_2018", "2019_2020", "2021_2022"),
+  function(interval) {
+    colname <- paste0("person_years_", interval)
+    if (colname %in% colnames(final_summed_df_two_yearly_hcv)) {
+      mean(final_summed_df_two_yearly_hcv[[colname]], na.rm = TRUE)
+    } else {
+      NA
+    }
+  }
+)
+
+# calculate lower and upper bounds for each two-year interval
+two_yearly_lower_bounds_hcv <- sapply(
+  c("2013_2014", "2015_2016", "2017_2018", "2019_2020", "2021_2022"),
+  function(interval) {
+    colname <- paste0("incidence_rate_", interval)
+    if (colname %in% colnames(final_summed_df_two_yearly_hcv)) {
+      quantile(final_summed_df_two_yearly_hcv[[colname]], 0.025, na.rm = TRUE)
+    } else {
+      NA
+    }
+  }
+)
+
+two_yearly_upper_bounds_hcv <- sapply(
+  c("2013_2014", "2015_2016", "2017_2018", "2019_2020", "2021_2022"),
+  function(interval) {
+    colname <- paste0("incidence_rate_", interval)
+    if (colname %in% colnames(final_summed_df_two_yearly_hcv)) {
+      quantile(final_summed_df_two_yearly_hcv[[colname]], 0.975, na.rm = TRUE)
+    } else {
+      NA
+    }
+  }
+)
+
 
 
 

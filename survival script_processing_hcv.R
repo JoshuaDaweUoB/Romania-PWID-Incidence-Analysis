@@ -221,7 +221,7 @@ View(romania_pwid_hcv_test)
 # check for rows where appointment_dte_lag is less than appointment_dte
 invalid_rows <- romania_pwid_hcv_test_iterations %>%
   filter(appointment_dte_lag < appointment_dte)
-cat("Number of rows where appointment_dte_lag is less than appointment_dte:", nrow(invalid_rows), "\n")
+cat("rows where appointment_dte_lag is less than appointment_dte:", nrow(invalid_rows), "\n")
 
 # split each iteration into a separate dataframe
 split_dataframes <- split(romania_pwid_hcv_test_iterations, romania_pwid_hcv_test_iterations$iteration)
@@ -244,6 +244,8 @@ split_dataframes <- lapply(split_dataframes, function(df) {
   combined_df <- rbind(df, romania_pwid_hcv_test_negatives)
   return(combined_df)
 })
+
+## wide format dataframes for hcv incidence analysis
 
 # list to store the results
 processed_dataframes_hcv <- list()
@@ -311,9 +313,6 @@ for (i in 1:1000) {
     }
   }
   
-  # Print the final dataframe for debugging
-  cat("Final dataframe:\n")
-  
   # Store the processed dataframe in the list
   processed_dataframes_hcv[[i]] <- df
 }
@@ -366,8 +365,8 @@ process_dataframe <- function(df) {
   
   # recode hcv_test_rslt to 0 when it is invalid, NA, or year does not equal midpoint_year
   df_long <- df_long %>%
-    mutate(hcv_test_rslt = ifelse(is.na(hcv_test_rslt) | !is.numeric(hcv_test_rslt) | year != midpoint_year, 0, hcv_test_rslt))
-  
+    mutate(hcv_test_rslt = ifelse(is.na(hcv_test_rslt) | !is.numeric(hcv_test_rslt), 0,
+                                ifelse(year == midpoint_year, hcv_test_rslt, NA)))
   # keep only the specified columns
   df_long <- df_long %>%
     dplyr::select(id, hcv_test_rslt, appointment_dte, appointment_dte_lag, year, midpoint_year, time_at_risk)
