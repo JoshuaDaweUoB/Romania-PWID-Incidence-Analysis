@@ -7,191 +7,197 @@ setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/
 ## load data
 romania_pwid_raw <- read_excel("ARAS DATA IDU 2013-2022.xlsx")
 
-## baseline HCV cohort
+## baseline HIV cohort
 
-# remove rows where hcv test result is missing
-romania_pwid_hcv <- romania_pwid_raw[!is.na(romania_pwid_raw$hcv_test_rslt), ]
+# remove rows where hiv test result is missing
+romania_pwid_hiv <- romania_pwid_raw[!is.na(romania_pwid_raw$hiv_test_rslt), ]
 
-# remove rows where hcv test result is indeterminate
-romania_pwid_hcv <- romania_pwid_hcv %>%
-  filter(!hcv_test_rslt == 3)
+# remove rows where hiv test result is indeterminate
+romania_pwid_hiv <- romania_pwid_hiv %>%
+  filter(!hiv_test_rslt == 3)
 
 # sequence by id 
-romania_pwid_hcv <- romania_pwid_hcv %>%
+romania_pwid_hiv <- romania_pwid_hiv %>%
   arrange(id) %>%
   mutate(id_seq = cumsum(!duplicated(id))) 
 
 # create sequence of visits by id
-romania_pwid_hcv <- romania_pwid_hcv %>%
+romania_pwid_hiv <- romania_pwid_hiv %>%
   group_by(id) %>%
   arrange(id, appointment_dte) %>%
   mutate(appointment_seq = row_number())
-romania_pwid_hcv <- ungroup(romania_pwid_hcv)
+romania_pwid_hiv <- ungroup(romania_pwid_hiv)
 
-# HCV test results
-romania_pwid_hcv_rslts <- table(romania_pwid_hcv$hcv_test_rslt)
-print(romania_pwid_hcv_rslts)
+# HIV test results
+romania_pwid_hiv_rslts <- table(romania_pwid_hiv$hiv_test_rslt)
+print(romania_pwid_hiv_rslts)
 
 # identify ids positive at baseline
-positive_at_baseline <- romania_pwid_hcv %>%
-  filter(appointment_seq == 1 & hcv_test_rslt == 2) %>%
+positive_at_baseline <- romania_pwid_hiv %>%
+  filter(appointment_seq == 1 & hiv_test_rslt == 2) %>%
   pull(id)
 
 # include ids where positive at baseline
-positive_at_baseline_df <- romania_pwid_hcv %>%
+positive_at_baseline_df <- romania_pwid_hiv %>%
   filter((id %in% positive_at_baseline))
 
-# HCV test results by visit
-positive_at_baseline_df_summary <- table(positive_at_baseline_df$hcv_test_rslt)
+# HIV test results by visit
+positive_at_baseline_df_summary <- table(positive_at_baseline_df$hiv_test_rslt)
 print(positive_at_baseline_df_summary)
 
 # remove ids where positive at baseline
-romania_pwid_hcv <- romania_pwid_hcv %>%
+romania_pwid_hiv <- romania_pwid_hiv %>%
   filter(!(id %in% positive_at_baseline))
 
 # sequence by id 
-romania_pwid_hcv <- romania_pwid_hcv %>%
+romania_pwid_hiv <- romania_pwid_hiv %>%
   arrange(id) %>%
   mutate(id_seq = cumsum(!duplicated(id)))
 
 # Find the highest value in the id_seq column
-highest_id_seq <- romania_pwid_hcv %>%
+highest_id_seq <- romania_pwid_hiv %>%
   summarise(max_id_seq = max(id_seq, na.rm = TRUE))
 
 # Print the result
 cat("Highest value in id_seq:\n")
 print(highest_id_seq)
 
-# HCV test results by visit
-romania_pwid_hcv_summary <- table(romania_pwid_hcv$appointment_seq, romania_pwid_hcv$hcv_test_rslt)
-print(romania_pwid_hcv_summary) 
+# HIV test results by visit
+romania_pwid_hiv_summary <- table(romania_pwid_hiv$appointment_seq, romania_pwid_hiv$hiv_test_rslt)
+print(romania_pwid_hiv_summary) 
 
-# sequence hcv tests by id
-romania_pwid_hcv <- romania_pwid_hcv %>%
+# sequence hiv tests by id
+romania_pwid_hiv <- romania_pwid_hiv %>%
   group_by(id) %>%
   arrange(id) %>%
-  mutate(hcv_test_seq = row_number())
+  mutate(hiv_test_seq = row_number())
 
-# HCV test results by test number
-romania_pwid_hcv_summary <- table(romania_pwid_hcv$hcv_test_seq, romania_pwid_hcv$hcv_test_rslt)
-print(romania_pwid_hcv_summary)
+# HIV test results by test number
+romania_pwid_hiv_summary <- table(romania_pwid_hiv$hiv_test_seq, romania_pwid_hiv$hiv_test_rslt)
+print(romania_pwid_hiv_summary)
 
 # remove participants with only one test
-romania_pwid_hcv <- romania_pwid_hcv %>%
+romania_pwid_hiv <- romania_pwid_hiv %>%
   group_by(id) %>%
-  filter(!(max(hcv_test_seq, na.rm = TRUE) == 1)) %>%
+  filter(!(max(hiv_test_seq, na.rm = TRUE) == 1)) %>%
   ungroup()
 
 # new id sequence
-romania_pwid_hcv <- romania_pwid_hcv %>%
+romania_pwid_hiv <- romania_pwid_hiv %>%
   arrange(id) %>%
   mutate(id_seq = cumsum(!duplicated(id)))
 
 # Find the highest value in the id_seq column
-highest_id_seq <- romania_pwid_hcv %>%
+highest_id_seq <- romania_pwid_hiv %>%
   summarise(max_id_seq = max(id_seq, na.rm = TRUE))
 
 # number of ids
 cat("Highest value in id_seq:\n")
 print(highest_id_seq)
 
-# HCV test results by test number
-romania_pwid_hcv_summary <- table(romania_pwid_hcv$hcv_test_seq, romania_pwid_hcv$hcv_test_rslt)
-print(romania_pwid_hcv_summary) 
+# HIV test results by test number
+romania_pwid_hiv_summary <- table(romania_pwid_hiv$hiv_test_seq, romania_pwid_hiv$hiv_test_rslt)
+print(romania_pwid_hiv_summary) 
 
 # create dataframe of individuals who tested after first positive
-romania_pwid_hcv_after_pos <- romania_pwid_hcv %>%
+romania_pwid_hiv_after_pos <- romania_pwid_hiv %>%
   group_by(id) %>%
   mutate(
-    first_hcv_positive_dte = ifelse(hcv_test_rslt == 2, appointment_dte, NA),
-    first_hcv_positive_dte = if (all(is.na(first_hcv_positive_dte))) NA else min(first_hcv_positive_dte, na.rm = TRUE)
+    first_hiv_positive_dte = ifelse(hiv_test_rslt == 2, appointment_dte, NA),
+    first_hiv_positive_dte = if (all(is.na(first_hiv_positive_dte))) NA else min(first_hiv_positive_dte, na.rm = TRUE)
   ) %>%
   ungroup() %>%
-  filter(!is.na(first_hcv_positive_dte) & appointment_dte > first_hcv_positive_dte)
+  filter(!is.na(first_hiv_positive_dte) & appointment_dte > first_hiv_positive_dte)
 
-# remove HCV tests after the first positive
-romania_pwid_hcv <- romania_pwid_hcv %>%
+# remove HIV tests after the first positive
+romania_pwid_hiv <- romania_pwid_hiv %>%
   group_by(id) %>%
   mutate(
-    first_hcv_positive_dte = ifelse(hcv_test_rslt == 2, appointment_dte, NA),
-    first_hcv_positive_dte = if (all(is.na(first_hcv_positive_dte))) NA else min(first_hcv_positive_dte, na.rm = TRUE)
+    first_hiv_positive_dte = ifelse(hiv_test_rslt == 2, appointment_dte, NA),
+    first_hiv_positive_dte = if (all(is.na(first_hiv_positive_dte))) NA else min(first_hiv_positive_dte, na.rm = TRUE)
   ) %>%
   ungroup()
 
 # Filter rows to keep only those before or on the first positive test date
-romania_pwid_hcv <- romania_pwid_hcv %>%
-  filter(is.na(first_hcv_positive_dte) | appointment_dte <= first_hcv_positive_dte)
+romania_pwid_hiv <- romania_pwid_hiv %>%
+  filter(is.na(first_hiv_positive_dte) | appointment_dte <= first_hiv_positive_dte)
 
-# HCV test results by visit
-romania_pwid_hcv_summary <- table(romania_pwid_hcv$hcv_test_seq, romania_pwid_hcv$hcv_test_rslt)
-print(romania_pwid_hcv_summary)
+# HIV test results by visit
+romania_pwid_hiv_summary <- table(romania_pwid_hiv$hiv_test_seq, romania_pwid_hiv$hiv_test_rslt)
+print(romania_pwid_hiv_summary)
 
-# create hcv testing dataframe
-romania_pwid_hcv_test <- subset(romania_pwid_hcv, select = c(id, appointment_dte, hcv_test_seq, hcv_test_rslt)) 
+# create hiv testing dataframe
+romania_pwid_hiv_test <- subset(romania_pwid_hiv, select = c(id, appointment_dte, hiv_test_seq, hiv_test_rslt)) 
 
-# create lag of appointment dates and hcv tests
-romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
-  arrange(id, hcv_test_seq) %>%
+# create lag of appointment dates and hiv tests
+romania_pwid_hiv_test <- romania_pwid_hiv_test %>%
+  arrange(id, hiv_test_seq) %>%
   group_by(id) %>%
   mutate(appointment_dte_lag = lead(appointment_dte),
-         hcv_test_rslt_lag = lead(hcv_test_rslt))
+         hiv_test_rslt_lag = lead(hiv_test_rslt))
 
 # remove empty rows
-romania_pwid_hcv_test <- romania_pwid_hcv_test[!is.na(romania_pwid_hcv_test$hcv_test_rslt_lag), ]
+romania_pwid_hiv_test <- romania_pwid_hiv_test[!is.na(romania_pwid_hiv_test$hiv_test_rslt_lag), ]
 
 # convert to dates
-romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
+romania_pwid_hiv_test <- romania_pwid_hiv_test %>%
   mutate(appointment_dte = as.Date(appointment_dte, format = "%d-%m-%Y")) %>%
   mutate(appointment_dte_lag = as.Date(appointment_dte_lag, format = "%d-%m-%Y"))
 
 # days at risk
-romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
+romania_pwid_hiv_test <- romania_pwid_hiv_test %>%
   mutate(days_risk = appointment_dte_lag-appointment_dte)
 
 # change test results to 0 and 1
-romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
-  mutate(hcv_test_rslt_lag = case_when(
-    hcv_test_rslt_lag == 1 ~ 0,
-    hcv_test_rslt_lag == 2 ~ 1,
-    TRUE ~ hcv_test_rslt_lag
+romania_pwid_hiv_test <- romania_pwid_hiv_test %>%
+  mutate(hiv_test_rslt_lag = case_when(
+    hiv_test_rslt_lag == 1 ~ 0,
+    hiv_test_rslt_lag == 2 ~ 1,
+    TRUE ~ hiv_test_rslt_lag
   ))
-romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
-  mutate(hcv_test_rslt = case_when(
-    hcv_test_rslt == 1 ~ 0,
-    hcv_test_rslt == 2 ~ 1,
-    TRUE ~ hcv_test_rslt
+romania_pwid_hiv_test <- romania_pwid_hiv_test %>%
+  mutate(hiv_test_rslt = case_when(
+    hiv_test_rslt == 1 ~ 0,
+    hiv_test_rslt == 2 ~ 1,
+    TRUE ~ hiv_test_rslt
   ))
 
-# rename hcv variables
-romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
+# rename hiv variables
+romania_pwid_hiv_test <- romania_pwid_hiv_test %>%
   rename(
-    hcv_baseline = hcv_test_rslt,
-    hcv_test_rslt = hcv_test_rslt_lag
+    hiv_baseline = hiv_test_rslt,
+    hiv_test_rslt = hiv_test_rslt_lag
   )
 
 # QA for rows where appointment_dte_lag is less than appointment_dte
-invalid_rows <- romania_pwid_hcv_test %>%
+invalid_rows <- romania_pwid_hiv_test %>%
   filter(appointment_dte_lag < appointment_dte)
 cat("Number of rows where appointment_dte_lag is less than appointment_dte:", nrow(invalid_rows), "\n")
 
-romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
+romania_pwid_hiv_test <- romania_pwid_hiv_test %>%
   mutate(
     appointment_dte = as.Date(appointment_dte),
     appointment_dte_lag = as.Date(appointment_dte_lag)
   )
 
 # Save testing data
-write.csv(romania_pwid_hcv_test, "romania_pwid_hcv_test.csv")
+write.csv(romania_pwid_hiv_test, "romania_pwid_hiv_test.csv")
 
 # load testing data
-romania_pwid_hcv_test <- read.csv("romania_pwid_hcv_test.csv", stringsAsFactors = FALSE)
+romania_pwid_hiv_test <- read.csv("romania_pwid_hiv_test.csv", stringsAsFactors = FALSE)
 
 #### random-point sampling with 1000 iterations approach ####
 
-View(romania_pwid_hcv_test)
+# Ensure appointment_dte and appointment_dte_lag are Date objects
+romania_pwid_hiv_test <- romania_pwid_hiv_test %>%
+  mutate(
+    appointment_dte = as.Date(appointment_dte),
+    appointment_dte_lag = as.Date(appointment_dte_lag)
+  )
+
 # generate random infection dates
-romania_pwid_hcv_test_iterations <- romania_pwid_hcv_test %>%
-  filter(hcv_test_rslt == 1) %>%
+romania_pwid_hiv_test_iterations <- romania_pwid_hiv_test %>%
+  filter(hiv_test_rslt == 1) %>%
   rowwise() %>%
   mutate(
     # generate 1000 random infection dates
@@ -215,22 +221,22 @@ romania_pwid_hcv_test_iterations <- romania_pwid_hcv_test %>%
   ) %>%
   ungroup()
 
-View(romania_pwid_hcv_test)
+View(romania_pwid_hiv_test)
 
 # check for rows where appointment_dte_lag is less than appointment_dte
-invalid_rows <- romania_pwid_hcv_test_iterations %>%
+invalid_rows <- romania_pwid_hiv_test_iterations %>%
   filter(appointment_dte_lag < appointment_dte)
 cat("Number of rows where appointment_dte_lag is less than appointment_dte:", nrow(invalid_rows), "\n")
 
 # split each iteration into a separate dataframe
-split_dataframes <- split(romania_pwid_hcv_test_iterations, romania_pwid_hcv_test_iterations$iteration)
+split_dataframes <- split(romania_pwid_hiv_test_iterations, romania_pwid_hiv_test_iterations$iteration)
 
 # name each dataframe in the list
 names(split_dataframes) <- paste0("iteration_", seq_along(split_dataframes))
 
 # create dataframe of negatives
-romania_pwid_hcv_test_negatives <- romania_pwid_hcv_test %>%
-  filter(hcv_test_rslt == 0) %>%
+romania_pwid_hiv_test_negatives <- romania_pwid_hiv_test %>%
+  filter(hiv_test_rslt == 0) %>%
   mutate(
     iteration = NA,
     random_infection_dtes = NA,
@@ -240,7 +246,7 @@ romania_pwid_hcv_test_negatives <- romania_pwid_hcv_test %>%
 
 # append the negatives dataframe to each of the 1000 dataframes
 split_dataframes <- lapply(split_dataframes, function(df) {
-  combined_df <- rbind(df, romania_pwid_hcv_test_negatives)
+  combined_df <- rbind(df, romania_pwid_hiv_test_negatives)
   return(combined_df)
 })
 
@@ -249,7 +255,7 @@ View(split_dataframes[["iteration_1"]])
 View(split_dataframes[["iteration_1000"]])
 
 # Initialize an empty list to store the results
-processed_dataframes <- list()
+processed_dataframes_hiv <- list()
 
 # Define the years for which we need to create columns
 required_years <- 2013:2022
@@ -303,16 +309,16 @@ for (i in 1:1000) {
   
   # Ensure all required columns are present
   for (year in required_years) {
-    column_name <- paste0("hcv_test_", year)
+    column_name <- paste0("hiv_test_", year)
     if (!(column_name %in% names(df))) {
       df[[column_name]] <- 0
     }
   }
   
-  # Populate the hcv_test_20xx columns based on midpoint_year and hcv_test_rslt
+  # Populate the hiv_test_20xx columns based on midpoint_year and hiv_test_rslt
   for (year in required_years) {
-    column_name <- paste0("hcv_test_", year)
-    df[[column_name]] <- ifelse(df$midpoint_year == year & df$hcv_test_rslt == 1, 1, df[[column_name]])
+    column_name <- paste0("hiv_test_", year)
+    df[[column_name]] <- ifelse(df$midpoint_year == year & df$hiv_test_rslt == 1, 1, df[[column_name]])
   }
   
   # Ensure all required person-year columns are present
@@ -327,13 +333,13 @@ for (i in 1:1000) {
   print(head(df))
   
   # Store the processed dataframe in the list
-  processed_dataframes[[i]] <- df
+  processed_dataframes_hiv[[i]] <- df
 }
 
 # create year variable
-for (i in 1:length(processed_dataframes)) {
+for (i in 1:length(processed_dataframes_hiv)) {
   # Get the processed dataframe for the current iteration
-  df <- processed_dataframes[[i]]
+  df <- processed_dataframes_hiv[[i]]
   
   # Create a new column 'year' by extracting the year from 'appointment_dte_lag'
   df <- df %>%
@@ -343,17 +349,17 @@ for (i in 1:length(processed_dataframes)) {
   df$year <- as.factor(df$year)
   
   # Store the updated dataframe back in the list
-  processed_dataframes[[i]] <- df
+  processed_dataframes_hiv[[i]] <- df
 }
 
 # View the first dataframe for QA
-View(processed_dataframes[[1]])
+View(processed_dataframes_hiv[[1]])
 
 # View the last dataframe for QA
-View(processed_dataframes[[1000]])
+View(processed_dataframes_hiv[[1000]])
 
 # Get the first processed dataframe
-df <- processed_dataframes[[1]]
+df <- processed_dataframes_hiv[[1]]
 
 # Create a histogram of the person_years column
 ggplot(df, aes(x = person_years)) +
@@ -364,12 +370,12 @@ ggplot(df, aes(x = person_years)) +
   theme_minimal()
 
 # Save the list of processed dataframes to a file
-saveRDS(processed_dataframes, file = "processed_dataframes.rds")
+saveRDS(processed_dataframes_hiv, file = "processed_dataframes_hiv.rds")
 
-# Subset romania_pwid_hcv to include only rows that match id, appointment_dte, and hcv_test_seq in romania_pwid_hcv_test
-romania_pwid_hcv_exposure <- romania_pwid_hcv %>%
-  semi_join(romania_pwid_hcv_test, by = c("id", "appointment_dte", "hcv_test_seq")) %>%
-  dplyr::select(id, appointment_dte, hcv_test_seq, gender, dob, sex_work_current,
+# Subset romania_pwid_hiv to include only rows that match id, appointment_dte, and hiv_test_seq in romania_pwid_hiv_test
+romania_pwid_hiv_exposure <- romania_pwid_hiv %>%
+  semi_join(romania_pwid_hiv_test, by = c("id", "appointment_dte", "hiv_test_seq")) %>%
+  dplyr::select(id, appointment_dte, hiv_test_seq, gender, dob, sex_work_current,
                 msm_current, homeless_current, ethnic_roma) %>%
   mutate(
     sex_work_current = ifelse(is.na(sex_work_current), 0, sex_work_current),
@@ -381,31 +387,31 @@ romania_pwid_hcv_exposure <- romania_pwid_hcv %>%
   )
 
 # Ensure dob is in the correct Date format
-romania_pwid_hcv_exposure <- romania_pwid_hcv_exposure %>%
+romania_pwid_hiv_exposure <- romania_pwid_hiv_exposure %>%
   mutate(dob = as.Date(dob, format = "%d/%m/%Y"))  # Convert dob to Date format
 
 # Generate age in years using dob and appointment_dte
-romania_pwid_hcv_exposure <- romania_pwid_hcv_exposure %>%
+romania_pwid_hiv_exposure <- romania_pwid_hiv_exposure %>%
   mutate(age_years = as.numeric(difftime(appointment_dte, dob, units = "days")) / 365.25)
 
 # merge with processed dataframes 
 
 # Define a function to merge exposure data with processed dataframes
-merge_with_exposure <- function(processed_dataframes, romania_pwid_hcv_exposure) {
-  # Ensure romania_pwid_hcv_exposure has no duplicate rows for id and appointment_dte
-  romania_pwid_hcv_exposure <- romania_pwid_hcv_exposure %>%
+merge_with_exposure <- function(processed_dataframes_hiv, romania_pwid_hiv_exposure) {
+  # Ensure romania_pwid_hiv_exposure has no duplicate rows for id and appointment_dte
+  romania_pwid_hiv_exposure <- romania_pwid_hiv_exposure %>%
     distinct(id, appointment_dte, .keep_all = TRUE)
   
-  # Merge romania_pwid_hcv_exposure with each dataframe in processed_dataframes
-  processed_dataframes <- lapply(processed_dataframes, function(df) {
+  # Merge romania_pwid_hiv_exposure with each dataframe in processed_dataframes
+  processed_dataframes_hiv <- lapply(processed_dataframes_hiv, function(df) {
     # Ensure df has no duplicate rows for id and appointment_dte
     df <- df %>%
       distinct(id, appointment_dte, .keep_all = TRUE)
     
-    # Perform the left join with romania_pwid_hcv_exposure
-    merged_df <- left_join(df, romania_pwid_hcv_exposure, by = c("id", "appointment_dte"))
+    # Perform the left join with romania_pwid_hiv_exposure
+    merged_df <- left_join(df, romania_pwid_hiv_exposure, by = c("id", "appointment_dte"))
     
-    # Remove duplicate columns (keep the columns from romania_pwid_hcv_exposure)
+    # Remove duplicate columns (keep the columns from romania_pwid_hiv_exposure)
     merged_df <- merged_df %>%
       dplyr::select(-ends_with(".x")) %>%  # Remove columns ending with ".x" (from the original dataframe)
       rename_with(~ gsub("\\.y$", "", .), ends_with(".y"))  # Remove ".y" suffix from merged columns
@@ -413,17 +419,17 @@ merge_with_exposure <- function(processed_dataframes, romania_pwid_hcv_exposure)
     return(merged_df)
   })
   
-  return(processed_dataframes)
+  return(processed_dataframes_hiv)
 }
 
 # Example usage of the function
-processed_dataframes <- merge_with_exposure(processed_dataframes, romania_pwid_hcv_exposure)
+processed_dataframes_hiv <- merge_with_exposure(processed_dataframes_hiv, romania_pwid_hiv_exposure)
 
 # Save the updated processed_dataframes to a file
-saveRDS(processed_dataframes, file = "processed_dataframes.rds")
+saveRDS(processed_dataframes_hiv, file = "processed_dataframes_hiv.rds")
 
 # View the first merged dataframe for QA
-View(processed_dataframes[[1]])
+View(processed_dataframes_hiv[[1]])
 
 # function to process each dataframe
 process_dataframe <- function(df) {
@@ -441,13 +447,13 @@ process_dataframe <- function(df) {
                  values_to = "time_at_risk") %>%
     filter(!is.na(time_at_risk))  # Remove rows where time_at_risk is NA
   
-  # Recode hcv_test_rslt to 0 when it is invalid, NA, or year does not equal midpoint_year
+  # Recode hiv_test_rslt to 0 when it is invalid, NA, or year does not equal midpoint_year
   df_long <- df_long %>%
-    mutate(hcv_test_rslt = ifelse(is.na(hcv_test_rslt) | !is.numeric(hcv_test_rslt) | year != midpoint_year, 0, hcv_test_rslt))
+    mutate(hiv_test_rslt = ifelse(is.na(hiv_test_rslt) | !is.numeric(hiv_test_rslt) | year != midpoint_year, 0, hiv_test_rslt))
   
   # Keep only the specified columns
   df_long <- df_long %>%
-    dplyr::select(id, hcv_test_rslt, appointment_dte, appointment_dte_lag, year, midpoint_year, time_at_risk)
+    dplyr::select(id, hiv_test_rslt, appointment_dte, appointment_dte_lag, year, midpoint_year, time_at_risk)
   
   # Sort by id and then by year
   df_long <- df_long %>%
@@ -457,20 +463,20 @@ process_dataframe <- function(df) {
 }
 
 # Load the dataframes
-processed_dataframes <- readRDS("processed_dataframes.rds")
+processed_dataframes_hiv <- readRDS("processed_dataframes_hiv.rds")
 
 # Verify that the dataframes are loaded correctly
-View(processed_dataframes[[1]])
-View(processed_dataframes[[1000]])
+View(processed_dataframes_hiv[[1]])
+View(processed_dataframes_hiv[[1000]])
 
 # Initialize a list to store the processed dataframes
-processed_dataframes_long <- list()
+processed_dataframes_long_hiv <- list()
 
 # Loop over all dataframes in processed_dataframes
 for (i in 1:length(processed_dataframes)) {
-  cat("Processing dataframe", i, "of", length(processed_dataframes), "\n")
-  processed_dataframes_long[[i]] <- process_dataframe(processed_dataframes[[i]])
+  cat("Processing dataframe", i, "of", length(processed_dataframes_hiv), "\n")
+  processed_dataframes_long_hiv[[i]] <- process_dataframe(processed_dataframes_hiv[[i]])
 }
 
 # Save the list of long format processed dataframes to a file
-saveRDS(processed_dataframes_long, file = "processed_dataframes_long.rds")
+saveRDS(processed_dataframes_long_hiv, file = "processed_dataframes_long_hiv.rds")

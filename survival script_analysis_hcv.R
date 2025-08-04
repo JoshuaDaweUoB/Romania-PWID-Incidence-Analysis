@@ -138,10 +138,10 @@ write.csv(msm_summary_table, "msm_summary_table_gender_1.csv", row.names = FALSE
 
 ## differences between excluded and included in longitudinal analysis
 
-# remove rows where hiv test result is missing
+# remove rows where hcv test result is missing
 romania_pwid_hcv_tb2 <- romania_pwid_raw[!is.na(romania_pwid_raw$hcv_test_rslt), ]
 
-# remove rows where hiv test result is indeterminate
+# remove rows where hcv test result is indeterminate
 romania_pwid_hcv_tb2 <- romania_pwid_hcv_tb2 %>%
   filter(!hcv_test_rslt == 3)
 
@@ -277,17 +277,9 @@ print(multiple_positive_ids)
 multiple_positive_rows <- processed_dataframes_long[[1]] %>%
   filter(id %in% multiple_positive_ids$id)
 
-View(multiple_positive_rows)
-
-## manual calculations
-
 # load the dataframes
 processed_dataframes <- readRDS("processed_dataframes.rds")
 processed_dataframes_long <- readRDS("processed_dataframes_long.rds")
-
-# view first datafarme
-View(processed_dataframes[[1]])
-View(processed_dataframes_long[[1]])
 
 # create 1000 dataframes of summed yearly person-years and incident cases
 
@@ -362,24 +354,38 @@ final_summed_df <- final_summed_df %>%
     upper_bound_95CI = overall_incidence_rate + (1.96 * standard_error)   # Upper bound of 95% CI
   )
 
+final_summed_df <- final_summed_df %>%
+  mutate(
+    incidence_rate_2013 = hcv_test_2013 / X2013 * 100,
+    incidence_rate_2014 = hcv_test_2014 / X2014 * 100,
+    incidence_rate_2015 = hcv_test_2015 / X2015 * 100,
+    incidence_rate_2016 = hcv_test_2016 / X2016 * 100,
+    incidence_rate_2017 = hcv_test_2017 / X2017 * 100,
+    incidence_rate_2018 = hcv_test_2018 / X2018 * 100,
+    incidence_rate_2019 = hcv_test_2019 / X2019 * 100,
+    incidence_rate_2020 = hcv_test_2020 / X2020 * 100,
+    incidence_rate_2021 = hcv_test_2021 / X2021 * 100,
+    incidence_rate_2022 = hcv_test_2022 / X2022 * 100
+  )
+
 # View the final combined dataframe for QA
 View(final_summed_df)
 
-# Calculate the median, 2.5th percentile, and 97.5th percentile for the overall incidence rate
-median_incidence_rate <- median(final_summed_df$overall_incidence_rate, na.rm = TRUE)
+# Calculate the mean, 2.5th percentile, and 97.5th percentile for the overall incidence rate
+mean_incidence_rate <- mean(final_summed_df$overall_incidence_rate, na.rm = TRUE)
 lower_bound_overall <- quantile(final_summed_df$overall_incidence_rate, 0.025, na.rm = TRUE)
 upper_bound_overall <- quantile(final_summed_df$overall_incidence_rate, 0.975, na.rm = TRUE)
 
-# Calculate the median incidence rates for each year from 2013 to 2022
-yearly_medians <- sapply(2013:2022, function(year) {
+# Calculate the mean incidence rates for each year from 2013 to 2022
+yearly_means <- sapply(2013:2022, function(year) {
   if (paste0("incidence_rate_", year) %in% colnames(final_summed_df)) {
-    median(final_summed_df[[paste0("incidence_rate_", year)]], na.rm = TRUE)
+    mean(final_summed_df[[paste0("incidence_rate_", year)]], na.rm = TRUE)
   } else {
     NA
   }
 })
-cat("Yearly medians:\n")
-print(yearly_medians)
+cat("Yearly means:\n")
+print(yearly_means)
 
 yearly_lower_bounds <- sapply(2013:2022, function(year) {
   if (paste0("incidence_rate_", year) %in% colnames(final_summed_df)) {
@@ -401,278 +407,47 @@ yearly_upper_bounds <- sapply(2013:2022, function(year) {
 cat("Yearly upper bounds:\n")
 print(yearly_upper_bounds)
 
-median_hcv_infections <- sapply(2013:2022, function(year) {
+mean_hcv_infections <- sapply(2013:2022, function(year) {
   if (paste0("hcv_test_", year) %in% colnames(final_summed_df)) {
-    median(final_summed_df[[paste0("hcv_test_", year)]], na.rm = TRUE)
+    mean(final_summed_df[[paste0("hcv_test_", year)]], na.rm = TRUE)
   } else {
     NA
   }
 })
-cat("Median HCV infections:\n")
-print(median_hcv_infections)
+cat("Mean HCV infections:\n")
+print(mean_hcv_infections)
 
-median_person_years <- sapply(2013:2022, function(year) {
+mean_person_years <- sapply(2013:2022, function(year) {
   if (paste0("X", year) %in% colnames(final_summed_df)) {
-    median(final_summed_df[[paste0("X", year)]], na.rm = TRUE)
+    mean(final_summed_df[[paste0("X", year)]], na.rm = TRUE)
   } else {
     NA
   }
 })
-cat("Median person-years:\n")
-print(median_person_years)
+cat("Mean person-years:\n")
+print(mean_person_years)
 
-# Calculate the overall median number of HCV infections and person-years
-overall_median_hcv_infections <- median(rowSums(final_summed_df[paste0("hcv_test_", 2013:2022)], na.rm = TRUE), na.rm = TRUE)
-overall_median_person_years <- median(rowSums(final_summed_df[paste0("X", 2013:2022)], na.rm = TRUE), na.rm = TRUE)
+# Calculate the overall mean number of HCV infections and person-years
+overall_mean_hcv_infections <- mean(rowSums(final_summed_df[paste0("hcv_test_", 2013:2022)], na.rm = TRUE), na.rm = TRUE)
+overall_mean_person_years <- mean(rowSums(final_summed_df[paste0("X", 2013:2022)], na.rm = TRUE), na.rm = TRUE)
 
-# Create a new dataframe with the overall and yearly incidence rates and lower bounds
-results_df <- data.frame(
+# Create a new dataframe with the overall and yearly incidence rates and lower bounds (means)
+results_df_mean <- data.frame(
   Incidence_year = c("Overall incidence rate", as.character(2013:2022)),
-  Incidence_rate = c(median_incidence_rate, yearly_medians),
+  Incidence_rate = c(mean_incidence_rate, yearly_means),
   Lower_bound = c(lower_bound_overall, yearly_lower_bounds),
   Upper_bound = c(upper_bound_overall, yearly_upper_bounds),
-  Median_HCV_infections = c(overall_median_hcv_infections, median_hcv_infections),
-  Median_person_years = c(overall_median_person_years, median_person_years)
+  Mean_HCV_infections = c(overall_mean_hcv_infections, mean_hcv_infections),
+  Mean_person_years = c(overall_mean_person_years, mean_person_years)
 )
 
 # Print the results dataframe
-cat("Results dataframe:\n")
-print(results_df)
-View(results_df)
+cat("Results dataframe (means):\n")
+print(results_df_mean)
+View(results_df_mean)
 
 # Save the overall incidence results to a CSV file
-write.csv(results_df, "overall_incidence_results_df.csv", row.names = TRUE)
-
-# # ### bootstrapping
-
-# Modified bootstrap function to calculate incidence by interval (no n_infection_samples argument)
-bootstrap_incidence_by_interval <- function(data, intervals) {
-  resample <- data %>% sample_n(size = nrow(data), replace = TRUE)
-  resample <- resample %>%
-    rowwise() %>%
-    mutate(
-      pt = if (hcv_test_rslt == 1) {
-        # Single random infection date per seroconverter
-        infection_date <- as.Date(runif(1, min = as.numeric(appointment_dte), max = as.numeric(appointment_dte_lag)), origin = "1970-01-01")
-        max(as.numeric(infection_date - appointment_dte), 1)
-      } else {
-        max(as.numeric(appointment_dte_lag - appointment_dte), 1)
-      }
-    ) %>%
-    ungroup()
-  
-  # For each interval, calculate incidence rate
-  interval_results <- lapply(names(intervals), function(interval_name) {
-    years <- intervals[[interval_name]]
-    interval_data <- resample %>% filter(year(appointment_dte) %in% years)
-    total_pt <- sum(interval_data$pt, na.rm = TRUE)
-    cases <- sum(interval_data$hcv_test_rslt == 1, na.rm = TRUE)
-    incidence_rate <- if (total_pt > 0) (cases / total_pt) * 365.25 * 100 else NA
-    data.frame(
-      interval = interval_name,
-      incidence_rate = incidence_rate,
-      total_pt = total_pt,
-      cases = cases
-    )
-  })
-  do.call(rbind, interval_results)
-}
-
-# Run bootstrap
-set.seed(42)
-n_boot <- 1000
-bootstrap_interval_results <- vector("list", n_boot)
-for (i in 1:n_boot) {
-  bootstrap_interval_results[[i]] <- bootstrap_incidence_by_interval(romania_pwid_hcv_test, intervals)
-  cat("Completed bootstrap:", i, "of", n_boot, "\n")
-}
-
-# Combine all bootstrap results into one dataframe
-all_bootstrap_df <- bind_rows(bootstrap_interval_results, .id = "bootstrap")
-
-# Summarise by interval: median and percentiles
-incidence_trends_boot <- all_bootstrap_df %>%
-  group_by(interval) %>%
-  summarise(
-    median_incidence_rate = median(incidence_rate, na.rm = TRUE),
-    lower_bound = quantile(incidence_rate, 0.025, na.rm = TRUE),
-    upper_bound = quantile(incidence_rate, 0.975, na.rm = TRUE),
-    median_total_person_years = median(total_pt, na.rm = TRUE),
-    median_total_hcv_infections = median(cases, na.rm = TRUE)
-  )
-
-# Save to CSV
-write.csv(incidence_trends_boot, "incidence_trends_bootstrap.csv", row.names = FALSE)
-
-# Plot
-HCV_incidence_trends_plot_boot <- ggplot(incidence_trends_boot, aes(x = interval, y = median_incidence_rate)) +
-  geom_line(group = 1, color = "gray", linewidth = 0.8, linetype = "solid") +
-  geom_point(shape = 18, size = 4, color = "gray") +
-  geom_errorbar(aes(ymin = lower_bound, ymax = upper_bound), width = 0.1, color = "black", size = 0.8) +
-  theme_minimal(base_size = 14) +
-  labs(
-    x = "Two-Yearly Interval",
-    y = "Median Incidence Rate (per 100 Person-Years)"
-  ) +
-  scale_y_continuous(expand = c(0, 0), limits = c(0, max(incidence_trends_boot$upper_bound, na.rm = TRUE) * 1.1)) +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    axis.title.x = element_text(margin = margin(t = 10)),
-    axis.title.y = element_text(margin = margin(r = 10)),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    panel.background = element_rect(fill = "white", color = NA),
-    plot.background = element_rect(fill = "white", color = NA)
-  )
-
-ggsave("plots/HCV_incidence_trends_plot_bootstrap.png", plot = HCV_incidence_trends_plot_boot, width = 10, height = 6, dpi = 300)
-
-
-
-
-# Define two-year intervals
-intervals <- list(
-  "2013-2014" = 2013:2014,
-  "2015-2016" = 2015:2016,
-  "2017-2018" = 2017:2018,
-  "2019-2020" = 2019:2020,
-  "2021-2022" = 2021:2022
-)
-
-# Modified bootstrap function to calculate incidence by interval
-bootstrap_incidence_by_interval <- function(data, n_infection_samples, intervals) {
-  resample <- data %>% sample_n(size = nrow(data), replace = TRUE)
-  resample <- resample %>%
-    rowwise() %>%
-    mutate(
-      pt = if (hcv_test_rslt == 1) {
-        mean(
-          sapply(1:n_infection_samples, function(x) {
-            infection_date <- as.Date(runif(1, min = as.numeric(appointment_dte), max = as.numeric(appointment_dte_lag)), origin = "1970-01-01")
-            max(as.numeric(infection_date - appointment_dte), 1)
-          })
-        )
-      } else {
-        max(as.numeric(appointment_dte_lag - appointment_dte), 1)
-      }
-    ) %>%
-    ungroup()
-  
-  # For each interval, calculate incidence rate
-  interval_results <- lapply(names(intervals), function(interval_name) {
-    years <- intervals[[interval_name]]
-    interval_data <- resample %>% filter(year(appointment_dte) %in% years)
-    total_pt <- sum(interval_data$pt, na.rm = TRUE)
-    cases <- sum(interval_data$hcv_test_rslt == 1, na.rm = TRUE)
-    incidence_rate <- if (total_pt > 0) (cases / total_pt) * 365.25 * 100 else NA
-    data.frame(
-      interval = interval_name,
-      incidence_rate = incidence_rate,
-      total_pt = total_pt,
-      cases = cases
-    )
-  })
-  do.call(rbind, interval_results)
-}
-
-# Run bootstrap
-set.seed(42)
-n_boot <- 1000
-n_infection_samples <- 100
-bootstrap_interval_results <- vector("list", n_boot)
-for (i in 1:n_boot) {
-  bootstrap_interval_results[[i]] <- bootstrap_incidence_by_interval(romania_pwid_hcv_test, n_infection_samples, intervals)
-  cat("Completed bootstrap:", i, "of", n_boot, "\n")
-}
-
-# Combine all bootstrap results into one dataframe
-all_bootstrap_df <- bind_rows(bootstrap_interval_results, .id = "bootstrap")
-
-# Summarize by interval: median and percentiles
-incidence_trends_boot <- all_bootstrap_df %>%
-  group_by(interval) %>%
-  summarise(
-    median_incidence_rate = median(incidence_rate, na.rm = TRUE),
-    lower_bound = quantile(incidence_rate, 0.025, na.rm = TRUE),
-    upper_bound = quantile(incidence_rate, 0.975, na.rm = TRUE),
-    median_total_person_years = median(total_pt, na.rm = TRUE),
-    median_total_hcv_infections = median(cases, na.rm = TRUE)
-  )
-
-# Save to CSV
-write.csv(incidence_trends_boot, "incidence_trends_bootstrap.csv", row.names = FALSE)
-
-# Plot
-HCV_incidence_trends_plot_boot <- ggplot(incidence_trends_boot, aes(x = interval, y = median_incidence_rate)) +
-  geom_line(group = 1, color = "gray", linewidth = 0.8, linetype = "solid") +
-  geom_point(shape = 18, size = 4, color = "gray") +
-  geom_errorbar(aes(ymin = lower_bound, ymax = upper_bound), width = 0.1, color = "black", size = 0.8) +
-  theme_minimal(base_size = 14) +
-  labs(
-    x = "Two-Yearly Interval",
-    y = "Median Incidence Rate (per 100 Person-Years)"
-  ) +
-  scale_y_continuous(expand = c(0, 0), limits = c(0, max(incidence_trends_boot$upper_bound, na.rm = TRUE) * 1.1)) +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    axis.title.x = element_text(margin = margin(t = 10)),
-    axis.title.y = element_text(margin = margin(r = 10)),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    panel.background = element_rect(fill = "white", color = NA),
-    plot.background = element_rect(fill = "white", color = NA)
-  )
-
-ggsave("plots/HCV_incidence_trends_plot_bootstrap.png", plot = HCV_incidence_trends_plot_boot, width = 10, height = 6, dpi = 300)
-
-# # Bootstrap function with random infection dates
-# bootstrap_incidence_random <- function(data, n_infection_samples) {
-#   resample <- data %>% sample_n(size = nrow(data), replace = TRUE)
-#   resample <- resample %>%
-#     rowwise() %>%
-#     mutate(
-#       pt = if (hcv_test_rslt == 1) {
-#         mean(
-#           sapply(1:n_infection_samples, function(x) {
-#             infection_date <- as.Date(runif(1, min = as.numeric(appointment_dte), max = as.numeric(appointment_dte_lag)), origin = "1970-01-01")
-#             max(as.numeric(infection_date - appointment_dte), 1)
-#           })
-#         )
-#       } else {
-#         max(as.numeric(appointment_dte_lag - appointment_dte), 1)
-#       }
-#     ) %>%
-#     ungroup()
-#   total_pt <- sum(resample$pt)
-#   cases <- sum(resample$hcv_test_rslt == 1)
-#   (cases / total_pt) * 365.25 * 100
-# }
-
-# # Run bootstrap with progress messages
-# set.seed(42)
-# n_boot <- 1000
-# n_infection_samples <- 1000
-# bootstrap_results <- numeric(n_boot)
-# for (i in 1:n_boot) {
-#   bootstrap_results[i] <- bootstrap_incidence_random(romania_pwid_hcv_test, n_infection_samples)
-#   cat("Completed bootstrap:", i, "of", n_boot, "\n")
-# }
-
-# # Summarize results
-# ir_mean <- mean(bootstrap_results, na.rm = TRUE)
-# ir_lower <- quantile(bootstrap_results, 0.025, na.rm = TRUE)
-# ir_upper <- quantile(bootstrap_results, 0.975, na.rm = TRUE)
-
-# cat(sprintf("Incidence rate: %.2f per 100 person-years (95%% CI: %.2f – %.2f)\n",
-#             ir_mean, ir_lower, ir_upper))
-
-# # Save as CSV
-# write.csv(bootstrap_results, "bootstrap_results.csv", row.names = FALSE)
-
-# # Save as RDS (recommended for R objects)
-# saveRDS(bootstrap_results, "bootstrap_results.rds")
-
-# Create 1000 dataframes of summed two-year intervals for person-years and incident cases
+write.csv(results_df_mean, "overall_incidence_results_df_mean.csv", row.names = TRUE)
 
 # Initialize an empty list to store the summed dataframes
 summed_dataframes_two_yearly <- list()
@@ -760,729 +535,578 @@ cat("Rubin's rules results for two-year intervals:\n")
 print(rubin_results_df)
 View(rubin_results_df)
 
-
-# Calculate the median incidence rates for each two-year interval
-two_yearly_medians <- sapply(c("2013_2014", "2015_2016", "2017_2018", "2019_2020", "2021_2022"), function(interval) {
+# Calculate the mean incidence rates for each two-year interval
+two_yearly_means <- sapply(c("2013_2014", "2015_2016", "2017_2018", "2019_2020", "2021_2022"), function(interval) {
   if (paste0("incidence_rate_", interval) %in% colnames(final_summed_df_two_yearly)) {
-    median(final_summed_df_two_yearly[[paste0("incidence_rate_", interval)]], na.rm = TRUE)
+    mean(final_summed_df_two_yearly[[paste0("incidence_rate_", interval)]], na.rm = TRUE)
   } else {
     NA  # Return NA if the column does not exist
   }
 })
-cat("Two-yearly medians:\n")
-print(two_yearly_medians)
+cat("Two-yearly means:\n")
+print(two_yearly_means)
 
-two_yearly_lower_bounds <- sapply(c("2013_2014", "2015_2016", "2017_2018", "2019_2020", "2021_2022"), function(interval) {
-  if (paste0("incidence_rate_", interval) %in% colnames(final_summed_df_two_yearly)) {
-    quantile(final_summed_df_two_yearly[[paste0("incidence_rate_", interval)]], 0.025, na.rm = TRUE)
-  } else {
-    NA
+# Calculate means for HCV infections and person-years for each two-year interval
+mean_hcv_infections_two_yearly <- sapply(
+  c("2013_2014", "2015_2016", "2017_2018", "2019_2020", "2021_2022"),
+  function(interval) {
+    colname <- paste0("hcv_test_", interval)
+    if (colname %in% colnames(final_summed_df_two_yearly)) {
+      mean(final_summed_df_two_yearly[[colname]], na.rm = TRUE)
+    } else {
+      NA
+    }
   }
-})
-cat("Two-yearly lower bounds:\n")
-print(two_yearly_lower_bounds)
+)
 
-two_yearly_upper_bounds <- sapply(c("2013_2014", "2015_2016", "2017_2018", "2019_2020", "2021_2022"), function(interval) {
-  if (paste0("incidence_rate_", interval) %in% colnames(final_summed_df_two_yearly)) {
-    quantile(final_summed_df_two_yearly[[paste0("incidence_rate_", interval)]], 0.975, na.rm = TRUE)
-  } else {
-    NA
+mean_person_years_two_yearly <- sapply(
+  c("2013_2014", "2015_2016", "2017_2018", "2019_2020", "2021_2022"),
+  function(interval) {
+    colname <- paste0("person_years_", interval)
+    if (colname %in% colnames(final_summed_df_two_yearly)) {
+      mean(final_summed_df_two_yearly[[colname]], na.rm = TRUE)
+    } else {
+      NA
+    }
   }
-})
-cat("Two-yearly upper bounds:\n")
-print(two_yearly_upper_bounds)
+)
 
-# Create a new dataframe with the two-year interval results
-results_df_two_yearly <- data.frame(
+# Calculate lower and upper bounds for each two-year interval
+two_yearly_lower_bounds <- sapply(
+  c("2013_2014", "2015_2016", "2017_2018", "2019_2020", "2021_2022"),
+  function(interval) {
+    colname <- paste0("incidence_rate_", interval)
+    if (colname %in% colnames(final_summed_df_two_yearly)) {
+      quantile(final_summed_df_two_yearly[[colname]], 0.025, na.rm = TRUE)
+    } else {
+      NA
+    }
+  }
+)
+
+two_yearly_upper_bounds <- sapply(
+  c("2013_2014", "2015_2016", "2017_2018", "2019_2020", "2021_2022"),
+  function(interval) {
+    colname <- paste0("incidence_rate_", interval)
+    if (colname %in% colnames(final_summed_df_two_yearly)) {
+      quantile(final_summed_df_two_yearly[[colname]], 0.975, na.rm = TRUE)
+    } else {
+      NA
+    }
+  }
+)
+
+# Create a new dataframe with the two-year interval results using means
+results_df_two_yearly_mean <- data.frame(
   Interval = c("2013-2014", "2015-2016", "2017-2018", "2019-2020", "2021-2022"),
-  Incidence_rate = two_yearly_medians,
+  Incidence_rate = two_yearly_means,
   Lower_bound = two_yearly_lower_bounds,
   Upper_bound = two_yearly_upper_bounds,
-  Median_HCV_infections = median_hcv_infections_two_yearly,
-  Median_person_years = median_person_years_two_yearly
+  Mean_HCV_infections = mean_hcv_infections_two_yearly,
+  Mean_person_years = mean_person_years_two_yearly
 )
 
 # Print the results dataframe
-cat("Two-Year Interval Results dataframe:\n")
-print(results_df_two_yearly)
-View(results_df_two_yearly)
+cat("Two-Year Interval Results dataframe (means):\n")
+print(results_df_two_yearly_mean)
+View(results_df_two_yearly_mean)
 
 # Save the two-year interval results to a CSV file
-write.csv(results_df_two_yearly, "results_df_two_yearly.csv", row.names = FALSE)
+write.csv(results_df_two_yearly_mean, "results_df_two_yearly_mean.csv", row.names = FALSE)
 
-# figure of incidence over time
-HCV_incidence_plot <- ggplot(results_df_two_yearly, aes(x = Interval, y = Incidence_rate)) +
+# figure of incidence over time (means)
+HCV_incidence_plot_mean <- ggplot(results_df_two_yearly_mean, aes(x = Interval, y = Incidence_rate)) +
   geom_line(group = 1, color = "gray") + 
   geom_point(shape = 18, size = 3, color = "gray") + 
-  geom_errorbar(aes(ymin = Lower_bound, ymax = Upper_bound), width = 0.2, color = "black") +  # Error bars
-  theme_minimal(base_size = 14) +  # Use a minimal theme
+  geom_errorbar(aes(ymin = Lower_bound, ymax = Upper_bound), width = 0.2, color = "black") +
+  theme_minimal(base_size = 14) +
   labs(
     x = "Two-yearly Interval",
-    y = "Incidence Rate per 100 Person-Years"  
+    y = "Mean Incidence Rate per 100 Person-Years"
   ) +
   theme(
-    axis.text.x = element_text(angle = 45, hjust = 1),  
-    panel.grid.major = element_blank(),  # Remove major gridlines
-    panel.grid.minor = element_blank(),  # Remove minor gridlines
-    panel.background = element_rect(fill = "white", color = NA),  # Set panel background to white
-    plot.background = element_rect(fill = "white", color = NA)  # Set plot background to white
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA)
   )
 
-# Save the plot as a PNG file in the "plots" folder
-ggsave("plots/HCV_incidence_plot.png", plot = HCV_incidence_plot, width = 8, height = 6, dpi = 300)
+ggsave("plots/HCV_incidence_plot_mean.png", plot = HCV_incidence_plot_mean, width = 8, height = 6, dpi = 300)
 
+# ## cox regression analysis
 
-## loop over 1000 iterations
+# # Initialize a list to store the results for all 1000 dataframes
+# all_cox_results <- list()
 
-# Initialize a list to store the results for all 1000 dataframes
-all_two_yearly_results <- list()
+# # Loop over all 1000 dataframes in processed_dataframes
+# for (i in 1:length(processed_dataframes)) {
+#   cat("Processing Cox regression for dataframe", i, "of", length(processed_dataframes), "\n")
+  
+#   # Load the current dataframe
+#   df <- processed_dataframes[[i]]
+  
+#   # Ensure the dataframe has no missing values for the variables of interest
+#   df <- df %>%
+#     filter(!is.na(hcv_test_rslt) & !is.na(gender) & !is.na(dob) & 
+#              !is.na(sex_work_current) & !is.na(msm_current) & 
+#              !is.na(homeless_current) & !is.na(ethnic_roma))
+  
+#   # Create a survival object
+#   surv_obj <- Surv(time = df$days_risk, event = df$hcv_test_rslt)
+  
+#   # List of exposures
+#   exposures <- c("gender", "age_years", "sex_work_current", "homeless_current", "ethnic_roma")
+  
+#   # Run univariate Cox regressions
+#   univariate_results <- lapply(exposures, function(var) {
+#     formula <- as.formula(paste("surv_obj ~", var))
+#     tryCatch(
+#       coxph(formula, data = df),
+#       error = function(e) {
+#         cat("Error in Cox regression for", var, ":", e$message, "\n")
+#         NULL
+#       }
+#     )
+#   })
+  
+#   # Run a multivariable Cox regression adjusting for all exposures
+#   multivariable_formula <- as.formula(paste("surv_obj ~", paste(exposures, collapse = " + ")))
+#   multivariable_cox <- tryCatch(
+#     coxph(multivariable_formula, data = df),
+#     error = function(e) {
+#       cat("Error in multivariable Cox regression:", e$message, "\n")
+#       NULL
+#     }
+#   )
+  
+#   # Store the results for this dataframe
+#   all_cox_results[[i]] <- list(
+#     univariate = univariate_results,
+#     multivariable = multivariable_cox
+#   )
+# }
 
-# Loop over all 1000 dataframes in the list
-for (i in 1:length(processed_dataframes_long)) {
-  cat("Processing dataframe", i, "of", length(processed_dataframes_long), "\n")
-  
-  # Load the current dataframe
-  midpoint_dataframe <- processed_dataframes_long[[i]]
-  
-  # Replace midpoint_year with NA if hcv_test_rslt is negative
-  midpoint_dataframe <- midpoint_dataframe %>%
-    mutate(
-      midpoint_year = ifelse(hcv_test_rslt == 0, NA, midpoint_year)  # Replace midpoint_year with NA if hcv_test_rslt == 0
-    )
-  
-  # Create a dataframe with rows for years 2013 to 2022 and calculate cases and years_at_risk
-  yearly_data <- midpoint_dataframe %>%
-    group_by(year) %>%
-    summarise(
-      cases = sum(hcv_test_rslt, na.rm = TRUE),        # Sum of hcv_test_rslt for each year
-      years_at_risk = sum(time_at_risk, na.rm = TRUE)  # Sum of time_at_risk for each year
-    ) %>%
-    filter(year %in% 2013:2022)  # Ensure only rows for years 2013 to 2022 are included
-  
-  # Define two-yearly intervals
-  midpoint_dataframe <- midpoint_dataframe %>%
-    mutate(
-      two_year_interval = case_when(
-        year %in% c(2013, 2014) ~ "2013-2014",
-        year %in% c(2015, 2016) ~ "2015-2016",
-        year %in% c(2017, 2018) ~ "2017-2018",
-        year %in% c(2019, 2020) ~ "2019-2020",
-        year %in% c(2021, 2022) ~ "2021-2022",
-        TRUE ~ NA_character_  # Exclude years outside the range
-      )
-    )
-  
-  # Group by two-year intervals and calculate totals
-  two_yearly_results <- midpoint_dataframe %>%
-    filter(!is.na(two_year_interval)) %>%  # Exclude rows without a valid interval
-    group_by(two_year_interval) %>%
-    summarise(
-      total_hcv_infections = sum(hcv_test_rslt, na.rm = TRUE),  # Total cases
-      total_person_years = sum(time_at_risk, na.rm = TRUE),     # Total person-years
-      incidence_rate = (total_hcv_infections / total_person_years) * 100,  # Incidence rate per 100 person-years
-      lower_bound = (total_hcv_infections / total_person_years) * 100 - 
-                    1.96 * sqrt(total_hcv_infections / (total_person_years^2)) * 100,  # Lower 95% CI
-      upper_bound = (total_hcv_infections / total_person_years) * 100 + 
-                    1.96 * sqrt(total_hcv_infections / (total_person_years^2)) * 100   # Upper 95% CI
-    )
-  
-  # Store the results in the list
-  all_two_yearly_results[[i]] <- two_yearly_results
-}
+# # Save the results to a file
+# saveRDS(all_cox_results, file = "all_cox_results.rds")
 
-# Combine all results into a single dataframe
-combined_two_yearly_results <- bind_rows(all_two_yearly_results, .id = "iteration")
+# # Example: Print the summary of the multivariable Cox regression for the first dataframe
+# cat("\nMultivariable Cox regression for dataframe 1:\n")
+# print(summary(all_cox_results[[1]]$multivariable))
 
-# Save the combined results to a CSV file
-write.csv(combined_two_yearly_results, "combined_two_yearly_results.csv", row.names = FALSE)
+# # Initialize an empty list to store the results for each iteration
+# cox_point_estimates <- list()
+# lower_95CI_list <- list()
+# upper_95CI_list <- list()
 
-# View the combined results
-View(combined_two_yearly_results)
+# # Loop through all 1000 iterations in all_cox_results
+# for (i in 1:length(all_cox_results)) {
+#   # Extract the univariate Cox regression results for this iteration
+#   univariate_results <- all_cox_results[[i]]$univariate
+  
+#   # Extract the hazard ratios (HR) and confidence intervals for each exposure
+#   hr_values <- sapply(univariate_results, function(model) {
+#     if (!is.null(model)) {
+#       exp(coef(model))  # Extract and exponentiate the coefficient to get the HR
+#     } else {
+#       NA  # If the model is NULL, return NA
+#     }
+#   })
+  
+#   lower_95CI <- sapply(univariate_results, function(model) {
+#     if (!is.null(model)) {
+#       exp(confint(model)[, 1])  # Extract and exponentiate the lower bound of the CI
+#     } else {
+#       NA
+#     }
+#   })
+  
+#   upper_95CI <- sapply(univariate_results, function(model) {
+#     if (!is.null(model)) {
+#       exp(confint(model)[, 2])  # Extract and exponentiate the upper bound of the CI
+#     } else {
+#       NA
+#     }
+#   })
+  
+#   # Extract the multivariable Cox regression results for this iteration
+#   multivariable_model <- all_cox_results[[i]]$multivariable
+  
+#   # Extract the hazard ratios (HR) and confidence intervals for the multivariable model
+#   multivariable_hr <- if (!is.null(multivariable_model)) {
+#     exp(coef(multivariable_model))  # Extract and exponentiate the coefficients
+#   } else {
+#     rep(NA, length(hr_values))  # If the model is NULL, return NA for all exposures
+#   }
+  
+#   multivariable_lower_95CI <- if (!is.null(multivariable_model)) {
+#     exp(confint(multivariable_model)[, 1])  # Extract and exponentiate the lower bound of the CI
+#   } else {
+#     rep(NA, length(hr_values))
+#   }
+  
+#   multivariable_upper_95CI <- if (!is.null(multivariable_model)) {
+#     exp(confint(multivariable_model)[, 2])  # Extract and exponentiate the upper bound of the CI
+#   } else {
+#     rep(NA, length(hr_values))
+#   }
+  
+#   # Combine the univariate and multivariable HRs and CIs into a single row
+#   combined_row <- c(univariate_hr = hr_values, multivariable_hr = multivariable_hr)
+#   lower_95CI_row <- c(univariate_lower_95CI = lower_95CI, multivariable_lower_95CI = multivariable_lower_95CI)
+#   upper_95CI_row <- c(univariate_upper_95CI = upper_95CI, multivariable_upper_95CI = multivariable_upper_95CI)
+  
+#   # Store the rows in the respective lists
+#   cox_point_estimates[[i]] <- combined_row
+#   lower_95CI_list[[i]] <- lower_95CI_row
+#   upper_95CI_list[[i]] <- upper_95CI_row
+# }
 
-# Initialize a list to store the results for all 1000 dataframes
-all_two_yearly_results <- list()
+# # Combine all rows into dataframes
+# cox_point_estimates_df <- do.call(rbind, cox_point_estimates)
+# lower_95CI_df <- do.call(rbind, lower_95CI_list)
+# upper_95CI_df <- do.call(rbind, upper_95CI_list)
 
-# longitudinal analysis - approach 2
+# # Assign column names to the dataframes
+# first_non_null <- all_cox_results[[which(!sapply(all_cox_results, is.null))[1]]]
+# colnames(cox_point_estimates_df) <- c(
+#   paste0("univariate_", names(first_non_null$univariate)),
+#   paste0("multivariable_", names(first_non_null$multivariable$coefficients))
+# )
+# colnames(lower_95CI_df) <- colnames(cox_point_estimates_df)
+# colnames(upper_95CI_df) <- colnames(cox_point_estimates_df)
 
-# Loop over all 1000 dataframes in the list
-for (i in 1:length(processed_dataframes_long)) {
-  cat("Processing dataframe", i, "of", length(processed_dataframes_long), "\n")
-  
-  # Load the current dataframe
-  midpoint_dataframe <- processed_dataframes_long[[i]]
-  
-  # Replace midpoint_year with NA if hcv_test_rslt is negative
-  midpoint_dataframe <- midpoint_dataframe %>%
-    mutate(
-      midpoint_year = ifelse(hcv_test_rslt == 0, NA, midpoint_year)  # Replace midpoint_year with NA if hcv_test_rslt == 0
-    )
-  
-  # Create a dataframe with rows for years 2013 to 2022 and calculate cases and years_at_risk
-  yearly_data <- midpoint_dataframe %>%
-    group_by(year) %>%
-    summarise(
-      cases = sum(hcv_test_rslt, na.rm = TRUE),        # Sum of hcv_test_rslt for each year
-      years_at_risk = sum(time_at_risk, na.rm = TRUE)  # Sum of time_at_risk for each year
-    ) %>%
-    filter(year %in% 2013:2022)  # Ensure only rows for years 2013 to 2022 are included
-  
-  # Define two-yearly intervals
-  midpoint_dataframe <- midpoint_dataframe %>%
-    mutate(
-      two_year_interval = case_when(
-        year %in% c(2013, 2014) ~ "2013-2014",
-        year %in% c(2015, 2016) ~ "2015-2016",
-        year %in% c(2017, 2018) ~ "2017-2018",
-        year %in% c(2019, 2020) ~ "2019-2020",
-        year %in% c(2021, 2022) ~ "2021-2022",
-        TRUE ~ NA_character_  # Exclude years outside the range
-      )
-    )
+# # Calculate the median, lower, and upper bounds for the hazard ratios and confidence intervals
+# summary_table <- data.frame(
+#   Variable = colnames(cox_point_estimates_df),
+#   Median_HR = apply(cox_point_estimates_df, 2, median, na.rm = TRUE),
+#   Lower_95CI = apply(lower_95CI_df, 2, median, na.rm = TRUE),
+#   Upper_95CI = apply(upper_95CI_df, 2, median, na.rm = TRUE)
+# )
 
-  # Group by two-year intervals and calculate totals
-  two_yearly_results <- midpoint_dataframe %>%
-    filter(!is.na(two_year_interval)) %>%  # Exclude rows without a valid interval
-    group_by(two_year_interval) %>%
-    summarise(
-      total_hcv_infections = sum(hcv_test_rslt, na.rm = TRUE),  # Total cases
-      total_person_years = sum(time_at_risk, na.rm = TRUE),     # Total person-years
-      incidence_rate = (total_hcv_infections / total_person_years) * 100,  # Incidence rate per 100 person-years
-      lower_bound = (total_hcv_infections / total_person_years) * 100 - 
-                    1.96 * sqrt(total_hcv_infections / (total_person_years^2)) * 100,  # Lower 95% CI
-      upper_bound = (total_hcv_infections / total_person_years) * 100 + 
-                    1.96 * sqrt(total_hcv_infections / (total_person_years^2)) * 100   # Upper 95% CI
-    )
-  
-  # Store the results in the list
-  all_two_yearly_results[[i]] <- two_yearly_results
-}
+# # View the resulting summary table
+# View(summary_table)
 
-# Combine all results into a single dataframe
-combined_two_yearly_results <- bind_rows(all_two_yearly_results, .id = "iteration")
+# # Save the summary table to a CSV file
+# write.csv(summary_table, "cox_regression_summary_table.csv", row.names = FALSE)
 
-# Save the combined results to a CSV file
-write.csv(combined_two_yearly_results, "combined_two_yearly_results.csv", row.names = FALSE)
+# ## analysis among males
 
-# View the combined results
-View(combined_two_yearly_results)
+# # Initialize a list to store the results for all 1000 dataframes
+# all_cox_results_male <- list()
 
-# Calculate incidence trends over time
-# Group by two-yearly intervals and calculate the median and percentiles
-incidence_trends <- combined_two_yearly_results %>%
-  group_by(two_year_interval) %>%
-  summarise(
-    median_incidence_rate = median(incidence_rate, na.rm = TRUE),  # Median incidence rate
-    lower_bound = quantile(incidence_rate, 0.025, na.rm = TRUE),  # 2.5th percentile
-    upper_bound = quantile(incidence_rate, 0.975, na.rm = TRUE),  # 97.5th percentile
-    median_total_person_years = median(total_person_years, na.rm = TRUE),  # Median total person-years
-    median_total_hcv_infections = median(total_hcv_infections, na.rm = TRUE)  # Median total HCV infections
-  )
+# # Loop over all 1000 dataframes in processed_dataframes
+# for (i in 1:length(processed_dataframes)) {
+#   cat("Processing Cox regression for dataframe", i, "of", length(processed_dataframes), "\n")
+  
+#   # Load the current dataframe
+#   df <- processed_dataframes[[i]]
+  
+#   # Filter the dataframe to include only rows where gender == 0 (male)
+#   df <- df %>%
+#     filter(gender == 0 & 
+#            !is.na(hcv_test_rslt) & !is.na(dob) & 
+#            !is.na(sex_work_current) & !is.na(msm_current) & 
+#            !is.na(homeless_current) & !is.na(ethnic_roma))
+  
+#   # Check if the filtered dataframe is empty
+#   if (nrow(df) == 0) {
+#     cat("Filtered dataframe is empty for iteration", i, ". Skipping.\n")
+#     all_cox_results_male[[i]] <- NULL
+#     next
+#   }
+  
+#   # Create a survival object
+#   surv_obj_male <- Surv(time = df$days_risk, event = df$hcv_test_rslt)
+  
+#   # List of exposures
+#   exposures_male <- c("age_years", "sex_work_current", "msm_current", "homeless_current", "ethnic_roma")
+  
+#   # Run univariate Cox regressions
+#   univariate_results_male <- lapply(exposures_male, function(var) {
+#     formula <- as.formula(paste("surv_obj_male ~", var))
+#     tryCatch(
+#       coxph(formula, data = df),
+#       error = function(e) {
+#         cat("Error in Cox regression for", var, ":", e$message, "\n")
+#         NULL
+#       }
+#     )
+#   })
+  
+#   # Run a multivariable Cox regression adjusting for all exposures
+#   multivariable_formula_male <- as.formula(paste("surv_obj_male ~", paste(exposures_male, collapse = " + ")))
+#   multivariable_cox_male <- tryCatch(
+#     coxph(multivariable_formula_male, data = df),
+#     error = function(e) {
+#       cat("Error in multivariable Cox regression:", e$message, "\n")
+#       NULL
+#     }
+#   )
+  
+#   # Store the results for this dataframe
+#   all_cox_results_male[[i]] <- list(
+#     univariate_male = univariate_results_male,
+#     multivariable_male = multivariable_cox_male
+#   )
+# }
 
-# View the incidence trends
-print(incidence_trends)
-View(incidence_trends)
+# # Save the results to a file
+# saveRDS(all_cox_results_male, file = "all_cox_results_male.rds")
 
-# Save the incidence trends to a CSV file
-write.csv(incidence_trends, "incidence_trends.csv", row.names = FALSE)
+# # Initialize an empty list to store the results for each iteration
+# cox_point_estimates_male <- list()
+# lower_95CI_list_male <- list()
+# upper_95CI_list_male <- list()
 
-# Create a plot for the incidence trends
-HCV_incidence_trends_plot <- ggplot(incidence_trends, aes(x = two_year_interval, y = median_incidence_rate)) +
-  geom_line(group = 1, color = "gray", linewidth = 0.8, linetype = "solid") +  # Solid gray line for trends
-  geom_point(shape = 18, size = 4, color = "gray") +  # Gray diamonds for points
-  geom_errorbar(aes(ymin = lower_bound, ymax = upper_bound), width = 0.1, color = "black", size = 0.8) +  # Black error bars
-  theme_minimal(base_size = 14) +  # Minimal theme
-  labs(
-    x = "Two-Yearly Interval",
-    y = "Median Incidence Rate (per 100 Person-Years)"
-  ) +
-  scale_y_continuous(expand = c(0, 0), limits = c(0, max(incidence_trends$upper_bound, na.rm = TRUE) * 1.1)) +  # Adjust y-axis limits
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis labels for better readability
-    axis.title.x = element_text(margin = margin(t = 10)),  # Add margin to x-axis title
-    axis.title.y = element_text(margin = margin(r = 10)),  # Add margin to y-axis title
-    panel.grid.major = element_blank(),  # Remove major gridlines
-    panel.grid.minor = element_blank(),  # Remove minor gridlines
-    panel.background = element_rect(fill = "white", color = NA),  # Set panel background to white
-    plot.background = element_rect(fill = "white", color = NA)  # Set plot background to white
-  )
+# # Loop through all 1000 iterations in all_cox_results_male
+# for (i in 1:length(all_cox_results_male)) {
+#   # Extract the univariate Cox regression results for this iteration
+#   univariate_results_male <- all_cox_results_male[[i]]$univariate_male
+  
+#   # Extract the hazard ratios (HR) and confidence intervals for each exposure
+#   hr_values_male <- sapply(univariate_results_male, function(model) {
+#     if (!is.null(model)) {
+#       exp(coef(model))  # Extract and exponentiate the coefficient to get the HR
+#     } else {
+#       NA  # If the model is NULL, return NA
+#     }
+#   })
+  
+#   lower_95CI_male <- sapply(univariate_results_male, function(model) {
+#     if (!is.null(model)) {
+#       exp(confint(model)[, 1])  # Extract and exponentiate the lower bound of the CI
+#     } else {
+#       NA
+#     }
+#   })
+  
+#   upper_95CI_male <- sapply(univariate_results_male, function(model) {
+#     if (!is.null(model)) {
+#       exp(confint(model)[, 2])  # Extract and exponentiate the upper bound of the CI
+#     } else {
+#       NA
+#     }
+#   })
+  
+#   # Extract the multivariable Cox regression results for this iteration
+#   multivariable_model_male <- all_cox_results_male[[i]]$multivariable_male
+  
+#   # Extract the hazard ratios (HR) and confidence intervals for the multivariable model
+#   multivariable_hr_male <- if (!is.null(multivariable_model_male)) {
+#     exp(coef(multivariable_model_male))  # Extract and exponentiate the coefficients
+#   } else {
+#     rep(NA, length(hr_values_male))  # If the model is NULL, return NA for all exposures
+#   }
+  
+#   multivariable_lower_95CI_male <- if (!is.null(multivariable_model_male)) {
+#     exp(confint(multivariable_model_male)[, 1])  # Extract and exponentiate the lower bound of the CI
+#   } else {
+#     rep(NA, length(hr_values_male))
+#   }
+  
+#   multivariable_upper_95CI_male <- if (!is.null(multivariable_model_male)) {
+#     exp(confint(multivariable_model_male)[, 2])  # Extract and exponentiate the upper bound of the CI
+#   } else {
+#     rep(NA, length(hr_values_male))
+#   }
+  
+#   # Combine the univariate and multivariable HRs and CIs into a single row
+#   combined_row_male <- c(univariate_hr_male = hr_values_male, multivariable_hr_male = multivariable_hr_male)
+#   lower_95CI_row_male <- c(univariate_lower_95CI_male = lower_95CI_male, multivariable_lower_95CI_male = multivariable_lower_95CI_male)
+#   upper_95CI_row_male <- c(univariate_upper_95CI_male = upper_95CI_male, multivariable_upper_95CI_male = multivariable_upper_95CI_male)
+  
+#   # Store the rows in the respective lists
+#   cox_point_estimates_male[[i]] <- combined_row_male
+#   lower_95CI_list_male[[i]] <- lower_95CI_row_male
+#   upper_95CI_list_male[[i]] <- upper_95CI_row_male
+# }
 
-# Save the plot as a PNG file
-ggsave("plots/HCV_incidence_trends_plot.png", plot = HCV_incidence_trends_plot, width = 10, height = 6, dpi = 300)
+# # Combine all rows into dataframes
+# cox_point_estimates_df_male <- do.call(rbind, cox_point_estimates_male)
+# lower_95CI_df_male <- do.call(rbind, lower_95CI_list_male)
+# upper_95CI_df_male <- do.call(rbind, upper_95CI_list_male)
 
-## cox regression analysis
-View(processed_dataframes[[1]])
+# # Assign column names to the dataframes
+# first_non_null_male <- all_cox_results_male[[which(!sapply(all_cox_results_male, is.null))[1]]]
+# colnames(cox_point_estimates_df_male) <- c(
+#   paste0("univariate_", names(first_non_null_male$univariate_male)),
+#   paste0("multivariable_", names(first_non_null_male$multivariable_male$coefficients))
+# )
+# colnames(lower_95CI_df_male) <- colnames(cox_point_estimates_df_male)
+# colnames(upper_95CI_df_male) <- colnames(cox_point_estimates_df_male)
 
-# Initialize a list to store the results for all 1000 dataframes
-all_cox_results <- list()
+# # Calculate the median, lower, and upper bounds for the hazard ratios and confidence intervals
+# summary_table_male <- data.frame(
+#   Variable = colnames(cox_point_estimates_df_male),
+#   Median_HR = apply(cox_point_estimates_df_male, 2, median, na.rm = TRUE),
+#   Lower_95CI = apply(lower_95CI_df_male, 2, median, na.rm = TRUE),
+#   Upper_95CI = apply(upper_95CI_df_male, 2, median, na.rm = TRUE)
+# )
 
-# Loop over all 1000 dataframes in processed_dataframes
-for (i in 1:length(processed_dataframes)) {
-  cat("Processing Cox regression for dataframe", i, "of", length(processed_dataframes), "\n")
-  
-  # Load the current dataframe
-  df <- processed_dataframes[[i]]
-  
-  # Ensure the dataframe has no missing values for the variables of interest
-  df <- df %>%
-    filter(!is.na(hcv_test_rslt) & !is.na(gender) & !is.na(dob) & 
-             !is.na(sex_work_current) & !is.na(msm_current) & 
-             !is.na(homeless_current) & !is.na(ethnic_roma))
-  
-  # Create a survival object
-  surv_obj <- Surv(time = df$days_risk, event = df$hcv_test_rslt)
-  
-  # List of exposures
-  exposures <- c("gender", "age_years", "sex_work_current", "homeless_current", "ethnic_roma")
-  
-  # Run univariate Cox regressions
-  univariate_results <- lapply(exposures, function(var) {
-    formula <- as.formula(paste("surv_obj ~", var))
-    tryCatch(
-      coxph(formula, data = df),
-      error = function(e) {
-        cat("Error in Cox regression for", var, ":", e$message, "\n")
-        NULL
-      }
-    )
-  })
-  
-  # Run a multivariable Cox regression adjusting for all exposures
-  multivariable_formula <- as.formula(paste("surv_obj ~", paste(exposures, collapse = " + ")))
-  multivariable_cox <- tryCatch(
-    coxph(multivariable_formula, data = df),
-    error = function(e) {
-      cat("Error in multivariable Cox regression:", e$message, "\n")
-      NULL
-    }
-  )
-  
-  # Store the results for this dataframe
-  all_cox_results[[i]] <- list(
-    univariate = univariate_results,
-    multivariable = multivariable_cox
-  )
-}
+# # View the resulting summary table
+# View(summary_table_male)
 
-# Save the results to a file
-saveRDS(all_cox_results, file = "all_cox_results.rds")
+# # Save the summary table to a CSV file
+# write.csv(summary_table_male, "cox_regression_summary_table_male.csv", row.names = FALSE)
 
-# Example: Print the summary of the multivariable Cox regression for the first dataframe
-cat("\nMultivariable Cox regression for dataframe 1:\n")
-print(summary(all_cox_results[[1]]$multivariable))
+# ## Analysis among females
 
-# Initialize an empty list to store the results for each iteration
-cox_point_estimates <- list()
-lower_95CI_list <- list()
-upper_95CI_list <- list()
+# # Initialize a list to store the results for all 1000 dataframes
+# all_cox_results_female <- list()
 
-# Loop through all 1000 iterations in all_cox_results
-for (i in 1:length(all_cox_results)) {
-  # Extract the univariate Cox regression results for this iteration
-  univariate_results <- all_cox_results[[i]]$univariate
+# # Loop over all 1000 dataframes in processed_dataframes
+# for (i in 1:length(processed_dataframes)) {
+#   cat("Processing Cox regression for dataframe", i, "of", length(processed_dataframes), "\n")
   
-  # Extract the hazard ratios (HR) and confidence intervals for each exposure
-  hr_values <- sapply(univariate_results, function(model) {
-    if (!is.null(model)) {
-      exp(coef(model))  # Extract and exponentiate the coefficient to get the HR
-    } else {
-      NA  # If the model is NULL, return NA
-    }
-  })
+#   # Load the current dataframe
+#   df <- processed_dataframes[[i]]
   
-  lower_95CI <- sapply(univariate_results, function(model) {
-    if (!is.null(model)) {
-      exp(confint(model)[, 1])  # Extract and exponentiate the lower bound of the CI
-    } else {
-      NA
-    }
-  })
+#   # Filter the dataframe to include only rows where gender == 1 (female)
+#   df <- df %>%
+#     filter(gender == 1 & 
+#            !is.na(hcv_test_rslt) & !is.na(dob) & 
+#            !is.na(sex_work_current) & 
+#            !is.na(homeless_current) & !is.na(ethnic_roma))
   
-  upper_95CI <- sapply(univariate_results, function(model) {
-    if (!is.null(model)) {
-      exp(confint(model)[, 2])  # Extract and exponentiate the upper bound of the CI
-    } else {
-      NA
-    }
-  })
+#   # Check if the filtered dataframe is empty
+#   if (nrow(df) == 0) {
+#     cat("Filtered dataframe is empty for iteration", i, ". Skipping.\n")
+#     all_cox_results_female[[i]] <- NULL
+#     next
+#   }
   
-  # Extract the multivariable Cox regression results for this iteration
-  multivariable_model <- all_cox_results[[i]]$multivariable
+#   # Create a survival object
+#   surv_obj_female <- Surv(time = df$days_risk, event = df$hcv_test_rslt)
   
-  # Extract the hazard ratios (HR) and confidence intervals for the multivariable model
-  multivariable_hr <- if (!is.null(multivariable_model)) {
-    exp(coef(multivariable_model))  # Extract and exponentiate the coefficients
-  } else {
-    rep(NA, length(hr_values))  # If the model is NULL, return NA for all exposures
-  }
+#   # List of exposures (excluding msm_current)
+#   exposures_female <- c("age_years", "sex_work_current", "homeless_current", "ethnic_roma")
   
-  multivariable_lower_95CI <- if (!is.null(multivariable_model)) {
-    exp(confint(multivariable_model)[, 1])  # Extract and exponentiate the lower bound of the CI
-  } else {
-    rep(NA, length(hr_values))
-  }
+#   # Run univariate Cox regressions
+#   univariate_results_female <- lapply(exposures_female, function(var) {
+#     formula <- as.formula(paste("surv_obj_female ~", var))
+#     tryCatch(
+#       coxph(formula, data = df),
+#       error = function(e) {
+#         cat("Error in Cox regression for", var, ":", e$message, "\n")
+#         NULL
+#       }
+#     )
+#   })
   
-  multivariable_upper_95CI <- if (!is.null(multivariable_model)) {
-    exp(confint(multivariable_model)[, 2])  # Extract and exponentiate the upper bound of the CI
-  } else {
-    rep(NA, length(hr_values))
-  }
+#   # Run a multivariable Cox regression adjusting for all exposures
+#   multivariable_formula_female <- as.formula(paste("surv_obj_female ~", paste(exposures_female, collapse = " + ")))
+#   multivariable_cox_female <- tryCatch(
+#     coxph(multivariable_formula_female, data = df),
+#     error = function(e) {
+#       cat("Error in multivariable Cox regression:", e$message, "\n")
+#       NULL
+#     }
+#   )
   
-  # Combine the univariate and multivariable HRs and CIs into a single row
-  combined_row <- c(univariate_hr = hr_values, multivariable_hr = multivariable_hr)
-  lower_95CI_row <- c(univariate_lower_95CI = lower_95CI, multivariable_lower_95CI = multivariable_lower_95CI)
-  upper_95CI_row <- c(univariate_upper_95CI = upper_95CI, multivariable_upper_95CI = multivariable_upper_95CI)
-  
-  # Store the rows in the respective lists
-  cox_point_estimates[[i]] <- combined_row
-  lower_95CI_list[[i]] <- lower_95CI_row
-  upper_95CI_list[[i]] <- upper_95CI_row
-}
+#   # Store the results for this dataframe
+#   all_cox_results_female[[i]] <- list(
+#     univariate_female = univariate_results_female,
+#     multivariable_female = multivariable_cox_female
+#   )
+# }
 
-# Combine all rows into dataframes
-cox_point_estimates_df <- do.call(rbind, cox_point_estimates)
-lower_95CI_df <- do.call(rbind, lower_95CI_list)
-upper_95CI_df <- do.call(rbind, upper_95CI_list)
+# # Save the results to a file
+# saveRDS(all_cox_results_female, file = "all_cox_results_female.rds")
 
-# Assign column names to the dataframes
-first_non_null <- all_cox_results[[which(!sapply(all_cox_results, is.null))[1]]]
-colnames(cox_point_estimates_df) <- c(
-  paste0("univariate_", names(first_non_null$univariate)),
-  paste0("multivariable_", names(first_non_null$multivariable$coefficients))
-)
-colnames(lower_95CI_df) <- colnames(cox_point_estimates_df)
-colnames(upper_95CI_df) <- colnames(cox_point_estimates_df)
+# # Initialize an empty list to store the results for each iteration
+# cox_point_estimates_female <- list()
+# lower_95CI_list_female <- list()
+# upper_95CI_list_female <- list()
 
-# Calculate the median, lower, and upper bounds for the hazard ratios and confidence intervals
-summary_table <- data.frame(
-  Variable = colnames(cox_point_estimates_df),
-  Median_HR = apply(cox_point_estimates_df, 2, median, na.rm = TRUE),
-  Lower_95CI = apply(lower_95CI_df, 2, median, na.rm = TRUE),
-  Upper_95CI = apply(upper_95CI_df, 2, median, na.rm = TRUE)
-)
+# # Loop through all 1000 iterations in all_cox_results_female
+# for (i in 1:length(all_cox_results_female)) {
+#   # Extract the univariate Cox regression results for this iteration
+#   univariate_results_female <- all_cox_results_female[[i]]$univariate_female
+  
+#   # Extract the hazard ratios (HR) and confidence intervals for each exposure
+#   hr_values_female <- sapply(univariate_results_female, function(model) {
+#     if (!is.null(model)) {
+#       exp(coef(model))  # Extract and exponentiate the coefficient to get the HR
+#     } else {
+#       NA  # If the model is NULL, return NA
+#     }
+#   })
+  
+#   lower_95CI_female <- sapply(univariate_results_female, function(model) {
+#     if (!is.null(model)) {
+#       exp(confint(model)[, 1])  # Extract and exponentiate the lower bound of the CI
+#     } else {
+#       NA
+#     }
+#   })
+  
+#   upper_95CI_female <- sapply(univariate_results_female, function(model) {
+#     if (!is.null(model)) {
+#       exp(confint(model)[, 2])  # Extract and exponentiate the upper bound of the CI
+#     } else {
+#       NA
+#     }
+#   })
+  
+#   # Extract the multivariable Cox regression results for this iteration
+#   multivariable_model_female <- all_cox_results_female[[i]]$multivariable_female
+  
+#   # Extract the hazard ratios (HR) and confidence intervals for the multivariable model
+#   multivariable_hr_female <- if (!is.null(multivariable_model_female)) {
+#     exp(coef(multivariable_model_female))  # Extract and exponentiate the coefficients
+#   } else {
+#     rep(NA, length(hr_values_female))  # If the model is NULL, return NA for all exposures
+#   }
+  
+#   multivariable_lower_95CI_female <- if (!is.null(multivariable_model_female)) {
+#     exp(confint(multivariable_model_female)[, 1])  # Extract and exponentiate the lower bound of the CI
+#   } else {
+#     rep(NA, length(hr_values_female))
+#   }
+  
+#   multivariable_upper_95CI_female <- if (!is.null(multivariable_model_female)) {
+#     exp(confint(multivariable_model_female)[, 2])  # Extract and exponentiate the upper bound of the CI
+#   } else {
+#     rep(NA, length(hr_values_female))
+#   }
+  
+#   # Combine the univariate and multivariable HRs and CIs into a single row
+#   combined_row_female <- c(univariate_hr_female = hr_values_female, multivariable_hr_female = multivariable_hr_female)
+#   lower_95CI_row_female <- c(univariate_lower_95CI_female = lower_95CI_female, multivariable_lower_95CI_female = multivariable_lower_95CI_female)
+#   upper_95CI_row_female <- c(univariate_upper_95CI_female = upper_95CI_female, multivariable_upper_95CI_female = multivariable_upper_95CI_female)
+  
+#   # Store the rows in the respective lists
+#   cox_point_estimates_female[[i]] <- combined_row_female
+#   lower_95CI_list_female[[i]] <- lower_95CI_row_female
+#   upper_95CI_list_female[[i]] <- upper_95CI_row_female
+# }
 
-# View the resulting summary table
-View(summary_table)
+# # Combine all rows into dataframes
+# cox_point_estimates_df_female <- do.call(rbind, cox_point_estimates_female)
+# lower_95CI_df_female <- do.call(rbind, lower_95CI_list_female)
+# upper_95CI_df_female <- do.call(rbind, upper_95CI_list_female)
 
-# Save the summary table to a CSV file
-write.csv(summary_table, "cox_regression_summary_table.csv", row.names = FALSE)
+# # Assign column names to the dataframes
+# first_non_null_female <- all_cox_results_female[[which(!sapply(all_cox_results_female, is.null))[1]]]
+# colnames(cox_point_estimates_df_female) <- c(
+#   paste0("univariate_", names(first_non_null_female$univariate_female)),
+#   paste0("multivariable_", names(first_non_null_female$multivariable_female$coefficients))
+# )
+# colnames(lower_95CI_df_female) <- colnames(cox_point_estimates_df_female)
+# colnames(upper_95CI_df_female) <- colnames(cox_point_estimates_df_female)
 
-## analysis among males
+# # Calculate the median, lower, and upper bounds for the hazard ratios and confidence intervals
+# summary_table_female <- data.frame(
+#   Variable = colnames(cox_point_estimates_df_female),
+#   Median_HR = apply(cox_point_estimates_df_female, 2, median, na.rm = TRUE),
+#   Lower_95CI = apply(lower_95CI_df_female, 2, median, na.rm = TRUE),
+#   Upper_95CI = apply(upper_95CI_df_female, 2, median, na.rm = TRUE)
+# )
 
-# Initialize a list to store the results for all 1000 dataframes
-all_cox_results_male <- list()
+# # View the resulting summary table
+# View(summary_table_female)
 
-# Loop over all 1000 dataframes in processed_dataframes
-for (i in 1:length(processed_dataframes)) {
-  cat("Processing Cox regression for dataframe", i, "of", length(processed_dataframes), "\n")
-  
-  # Load the current dataframe
-  df <- processed_dataframes[[i]]
-  
-  # Filter the dataframe to include only rows where gender == 0 (male)
-  df <- df %>%
-    filter(gender == 0 & 
-           !is.na(hcv_test_rslt) & !is.na(dob) & 
-           !is.na(sex_work_current) & !is.na(msm_current) & 
-           !is.na(homeless_current) & !is.na(ethnic_roma))
-  
-  # Check if the filtered dataframe is empty
-  if (nrow(df) == 0) {
-    cat("Filtered dataframe is empty for iteration", i, ". Skipping.\n")
-    all_cox_results_male[[i]] <- NULL
-    next
-  }
-  
-  # Create a survival object
-  surv_obj_male <- Surv(time = df$days_risk, event = df$hcv_test_rslt)
-  
-  # List of exposures
-  exposures_male <- c("age_years", "sex_work_current", "msm_current", "homeless_current", "ethnic_roma")
-  
-  # Run univariate Cox regressions
-  univariate_results_male <- lapply(exposures_male, function(var) {
-    formula <- as.formula(paste("surv_obj_male ~", var))
-    tryCatch(
-      coxph(formula, data = df),
-      error = function(e) {
-        cat("Error in Cox regression for", var, ":", e$message, "\n")
-        NULL
-      }
-    )
-  })
-  
-  # Run a multivariable Cox regression adjusting for all exposures
-  multivariable_formula_male <- as.formula(paste("surv_obj_male ~", paste(exposures_male, collapse = " + ")))
-  multivariable_cox_male <- tryCatch(
-    coxph(multivariable_formula_male, data = df),
-    error = function(e) {
-      cat("Error in multivariable Cox regression:", e$message, "\n")
-      NULL
-    }
-  )
-  
-  # Store the results for this dataframe
-  all_cox_results_male[[i]] <- list(
-    univariate_male = univariate_results_male,
-    multivariable_male = multivariable_cox_male
-  )
-}
-
-# Save the results to a file
-saveRDS(all_cox_results_male, file = "all_cox_results_male.rds")
-
-# Initialize an empty list to store the results for each iteration
-cox_point_estimates_male <- list()
-lower_95CI_list_male <- list()
-upper_95CI_list_male <- list()
-
-# Loop through all 1000 iterations in all_cox_results_male
-for (i in 1:length(all_cox_results_male)) {
-  # Extract the univariate Cox regression results for this iteration
-  univariate_results_male <- all_cox_results_male[[i]]$univariate_male
-  
-  # Extract the hazard ratios (HR) and confidence intervals for each exposure
-  hr_values_male <- sapply(univariate_results_male, function(model) {
-    if (!is.null(model)) {
-      exp(coef(model))  # Extract and exponentiate the coefficient to get the HR
-    } else {
-      NA  # If the model is NULL, return NA
-    }
-  })
-  
-  lower_95CI_male <- sapply(univariate_results_male, function(model) {
-    if (!is.null(model)) {
-      exp(confint(model)[, 1])  # Extract and exponentiate the lower bound of the CI
-    } else {
-      NA
-    }
-  })
-  
-  upper_95CI_male <- sapply(univariate_results_male, function(model) {
-    if (!is.null(model)) {
-      exp(confint(model)[, 2])  # Extract and exponentiate the upper bound of the CI
-    } else {
-      NA
-    }
-  })
-  
-  # Extract the multivariable Cox regression results for this iteration
-  multivariable_model_male <- all_cox_results_male[[i]]$multivariable_male
-  
-  # Extract the hazard ratios (HR) and confidence intervals for the multivariable model
-  multivariable_hr_male <- if (!is.null(multivariable_model_male)) {
-    exp(coef(multivariable_model_male))  # Extract and exponentiate the coefficients
-  } else {
-    rep(NA, length(hr_values_male))  # If the model is NULL, return NA for all exposures
-  }
-  
-  multivariable_lower_95CI_male <- if (!is.null(multivariable_model_male)) {
-    exp(confint(multivariable_model_male)[, 1])  # Extract and exponentiate the lower bound of the CI
-  } else {
-    rep(NA, length(hr_values_male))
-  }
-  
-  multivariable_upper_95CI_male <- if (!is.null(multivariable_model_male)) {
-    exp(confint(multivariable_model_male)[, 2])  # Extract and exponentiate the upper bound of the CI
-  } else {
-    rep(NA, length(hr_values_male))
-  }
-  
-  # Combine the univariate and multivariable HRs and CIs into a single row
-  combined_row_male <- c(univariate_hr_male = hr_values_male, multivariable_hr_male = multivariable_hr_male)
-  lower_95CI_row_male <- c(univariate_lower_95CI_male = lower_95CI_male, multivariable_lower_95CI_male = multivariable_lower_95CI_male)
-  upper_95CI_row_male <- c(univariate_upper_95CI_male = upper_95CI_male, multivariable_upper_95CI_male = multivariable_upper_95CI_male)
-  
-  # Store the rows in the respective lists
-  cox_point_estimates_male[[i]] <- combined_row_male
-  lower_95CI_list_male[[i]] <- lower_95CI_row_male
-  upper_95CI_list_male[[i]] <- upper_95CI_row_male
-}
-
-# Combine all rows into dataframes
-cox_point_estimates_df_male <- do.call(rbind, cox_point_estimates_male)
-lower_95CI_df_male <- do.call(rbind, lower_95CI_list_male)
-upper_95CI_df_male <- do.call(rbind, upper_95CI_list_male)
-
-# Assign column names to the dataframes
-first_non_null_male <- all_cox_results_male[[which(!sapply(all_cox_results_male, is.null))[1]]]
-colnames(cox_point_estimates_df_male) <- c(
-  paste0("univariate_", names(first_non_null_male$univariate_male)),
-  paste0("multivariable_", names(first_non_null_male$multivariable_male$coefficients))
-)
-colnames(lower_95CI_df_male) <- colnames(cox_point_estimates_df_male)
-colnames(upper_95CI_df_male) <- colnames(cox_point_estimates_df_male)
-
-# Calculate the median, lower, and upper bounds for the hazard ratios and confidence intervals
-summary_table_male <- data.frame(
-  Variable = colnames(cox_point_estimates_df_male),
-  Median_HR = apply(cox_point_estimates_df_male, 2, median, na.rm = TRUE),
-  Lower_95CI = apply(lower_95CI_df_male, 2, median, na.rm = TRUE),
-  Upper_95CI = apply(upper_95CI_df_male, 2, median, na.rm = TRUE)
-)
-
-# View the resulting summary table
-View(summary_table_male)
-
-# Save the summary table to a CSV file
-write.csv(summary_table_male, "cox_regression_summary_table_male.csv", row.names = FALSE)
-
-## Analysis among females
-
-# Initialize a list to store the results for all 1000 dataframes
-all_cox_results_female <- list()
-
-# Loop over all 1000 dataframes in processed_dataframes
-for (i in 1:length(processed_dataframes)) {
-  cat("Processing Cox regression for dataframe", i, "of", length(processed_dataframes), "\n")
-  
-  # Load the current dataframe
-  df <- processed_dataframes[[i]]
-  
-  # Filter the dataframe to include only rows where gender == 1 (female)
-  df <- df %>%
-    filter(gender == 1 & 
-           !is.na(hcv_test_rslt) & !is.na(dob) & 
-           !is.na(sex_work_current) & 
-           !is.na(homeless_current) & !is.na(ethnic_roma))
-  
-  # Check if the filtered dataframe is empty
-  if (nrow(df) == 0) {
-    cat("Filtered dataframe is empty for iteration", i, ". Skipping.\n")
-    all_cox_results_female[[i]] <- NULL
-    next
-  }
-  
-  # Create a survival object
-  surv_obj_female <- Surv(time = df$days_risk, event = df$hcv_test_rslt)
-  
-  # List of exposures (excluding msm_current)
-  exposures_female <- c("age_years", "sex_work_current", "homeless_current", "ethnic_roma")
-  
-  # Run univariate Cox regressions
-  univariate_results_female <- lapply(exposures_female, function(var) {
-    formula <- as.formula(paste("surv_obj_female ~", var))
-    tryCatch(
-      coxph(formula, data = df),
-      error = function(e) {
-        cat("Error in Cox regression for", var, ":", e$message, "\n")
-        NULL
-      }
-    )
-  })
-  
-  # Run a multivariable Cox regression adjusting for all exposures
-  multivariable_formula_female <- as.formula(paste("surv_obj_female ~", paste(exposures_female, collapse = " + ")))
-  multivariable_cox_female <- tryCatch(
-    coxph(multivariable_formula_female, data = df),
-    error = function(e) {
-      cat("Error in multivariable Cox regression:", e$message, "\n")
-      NULL
-    }
-  )
-  
-  # Store the results for this dataframe
-  all_cox_results_female[[i]] <- list(
-    univariate_female = univariate_results_female,
-    multivariable_female = multivariable_cox_female
-  )
-}
-
-# Save the results to a file
-saveRDS(all_cox_results_female, file = "all_cox_results_female.rds")
-
-# Initialize an empty list to store the results for each iteration
-cox_point_estimates_female <- list()
-lower_95CI_list_female <- list()
-upper_95CI_list_female <- list()
-
-# Loop through all 1000 iterations in all_cox_results_female
-for (i in 1:length(all_cox_results_female)) {
-  # Extract the univariate Cox regression results for this iteration
-  univariate_results_female <- all_cox_results_female[[i]]$univariate_female
-  
-  # Extract the hazard ratios (HR) and confidence intervals for each exposure
-  hr_values_female <- sapply(univariate_results_female, function(model) {
-    if (!is.null(model)) {
-      exp(coef(model))  # Extract and exponentiate the coefficient to get the HR
-    } else {
-      NA  # If the model is NULL, return NA
-    }
-  })
-  
-  lower_95CI_female <- sapply(univariate_results_female, function(model) {
-    if (!is.null(model)) {
-      exp(confint(model)[, 1])  # Extract and exponentiate the lower bound of the CI
-    } else {
-      NA
-    }
-  })
-  
-  upper_95CI_female <- sapply(univariate_results_female, function(model) {
-    if (!is.null(model)) {
-      exp(confint(model)[, 2])  # Extract and exponentiate the upper bound of the CI
-    } else {
-      NA
-    }
-  })
-  
-  # Extract the multivariable Cox regression results for this iteration
-  multivariable_model_female <- all_cox_results_female[[i]]$multivariable_female
-  
-  # Extract the hazard ratios (HR) and confidence intervals for the multivariable model
-  multivariable_hr_female <- if (!is.null(multivariable_model_female)) {
-    exp(coef(multivariable_model_female))  # Extract and exponentiate the coefficients
-  } else {
-    rep(NA, length(hr_values_female))  # If the model is NULL, return NA for all exposures
-  }
-  
-  multivariable_lower_95CI_female <- if (!is.null(multivariable_model_female)) {
-    exp(confint(multivariable_model_female)[, 1])  # Extract and exponentiate the lower bound of the CI
-  } else {
-    rep(NA, length(hr_values_female))
-  }
-  
-  multivariable_upper_95CI_female <- if (!is.null(multivariable_model_female)) {
-    exp(confint(multivariable_model_female)[, 2])  # Extract and exponentiate the upper bound of the CI
-  } else {
-    rep(NA, length(hr_values_female))
-  }
-  
-  # Combine the univariate and multivariable HRs and CIs into a single row
-  combined_row_female <- c(univariate_hr_female = hr_values_female, multivariable_hr_female = multivariable_hr_female)
-  lower_95CI_row_female <- c(univariate_lower_95CI_female = lower_95CI_female, multivariable_lower_95CI_female = multivariable_lower_95CI_female)
-  upper_95CI_row_female <- c(univariate_upper_95CI_female = upper_95CI_female, multivariable_upper_95CI_female = multivariable_upper_95CI_female)
-  
-  # Store the rows in the respective lists
-  cox_point_estimates_female[[i]] <- combined_row_female
-  lower_95CI_list_female[[i]] <- lower_95CI_row_female
-  upper_95CI_list_female[[i]] <- upper_95CI_row_female
-}
-
-# Combine all rows into dataframes
-cox_point_estimates_df_female <- do.call(rbind, cox_point_estimates_female)
-lower_95CI_df_female <- do.call(rbind, lower_95CI_list_female)
-upper_95CI_df_female <- do.call(rbind, upper_95CI_list_female)
-
-# Assign column names to the dataframes
-first_non_null_female <- all_cox_results_female[[which(!sapply(all_cox_results_female, is.null))[1]]]
-colnames(cox_point_estimates_df_female) <- c(
-  paste0("univariate_", names(first_non_null_female$univariate_female)),
-  paste0("multivariable_", names(first_non_null_female$multivariable_female$coefficients))
-)
-colnames(lower_95CI_df_female) <- colnames(cox_point_estimates_df_female)
-colnames(upper_95CI_df_female) <- colnames(cox_point_estimates_df_female)
-
-# Calculate the median, lower, and upper bounds for the hazard ratios and confidence intervals
-summary_table_female <- data.frame(
-  Variable = colnames(cox_point_estimates_df_female),
-  Median_HR = apply(cox_point_estimates_df_female, 2, median, na.rm = TRUE),
-  Lower_95CI = apply(lower_95CI_df_female, 2, median, na.rm = TRUE),
-  Upper_95CI = apply(upper_95CI_df_female, 2, median, na.rm = TRUE)
-)
-
-# View the resulting summary table
-View(summary_table_female)
-
-# Save the summary table to a CSV file
-write.csv(summary_table_female, "cox_regression_summary_table_female.csv", row.names = FALSE)
+# # Save the summary table to a CSV file
+# write.csv(summary_table_female, "cox_regression_summary_table_female.csv", row.names = FALSE)
 
