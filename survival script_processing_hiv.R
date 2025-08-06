@@ -54,12 +54,9 @@ romania_pwid_hiv <- romania_pwid_hiv %>%
   arrange(id) %>%
   mutate(id_seq = cumsum(!duplicated(id)))
 
-# Find the highest value in the id_seq column
+# highest value in the id_seq column
 highest_id_seq <- romania_pwid_hiv %>%
   summarise(max_id_seq = max(id_seq, na.rm = TRUE))
-
-# Print the result
-cat("Highest value in id_seq:\n")
 print(highest_id_seq)
 
 # hiv test results by visit
@@ -129,56 +126,61 @@ print(romania_pwid_hiv_summary)
 # create hiv testing dataframe
 romania_pwid_hiv_test <- subset(romania_pwid_hiv, select = c(id, appointment_dte, hiv_test_seq, hiv_test_rslt)) 
 
-# create lag of appointment dates and hiv tests
-romania_pwid_hiv_test <- romania_pwid_hiv_test %>%
-  arrange(id, hiv_test_seq) %>%
+# appointment_dte is a date
+romania_pwid_hiv <- romania_pwid_hiv %>%
+  mutate(appointment_dte = as.Date(appointment_dte, format = "%Y-%m-%d"))
+
+# sequence tests by id and date
+romania_pwid_hiv <- romania_pwid_hiv %>%
+  arrange(id, appointment_dte) %>%
   group_by(id) %>%
-  mutate(appointment_dte_lag = lead(appointment_dte),
-         hiv_test_rslt_lag = lead(hiv_test_rslt))
+  mutate(hiv_test_seq = row_number()) %>%
+  ungroup()
 
-# remove empty rows
-romania_pwid_hiv_test <- romania_pwid_hiv_test[!is.na(romania_pwid_hiv_test$hiv_test_rslt_lag), ]
-
-# convert to dates
-romania_pwid_hiv_test <- romania_pwid_hiv_test %>%
-  mutate(appointment_dte = as.Date(appointment_dte, format = "%d-%m-%Y")) %>%
-  mutate(appointment_dte_lag = as.Date(appointment_dte_lag, format = "%d-%m-%Y"))
-
-# days at risk
-romania_pwid_hiv_test <- romania_pwid_hiv_test %>%
-  mutate(days_risk = appointment_dte_lag-appointment_dte)
+# create intervals
+romania_pwid_hiv_test <- romania_pwid_hiv %>%
+  mutate(appointment_dte = as.Date(appointment_dte, format = "%Y-%m-%d")) %>%
+  arrange(id, appointment_dte) %>%
+  group_by(id) %>%
+  mutate(
+    appointment_dte_start = appointment_dte,
+    appointment_dte_end = lead(appointment_dte),
+    hiv_test_rslt_start = hiv_test_rslt,
+    hiv_test_rslt_end = lead(hiv_test_rslt)
+  ) %>%
+  ungroup() %>%
+  filter(!is.na(appointment_dte_end)) %>%
+  mutate(
+    days_risk = as.numeric(appointment_dte_end - appointment_dte_start),
+    py = days_risk / 365.25
+  ) %>%
+  dplyr::select(id, appointment_dte_start, appointment_dte_end, hiv_test_rslt_start, hiv_test_rslt_end, days_risk, py) %>%
+  rename(
+    appointment_dte = appointment_dte_start,
+    appointment_dte_lag = appointment_dte_end,
+    hiv_baseline = hiv_test_rslt_start,
+    hiv_test_rslt = hiv_test_rslt_end
+  )
 
 # change test results to 0 and 1
 romania_pwid_hiv_test <- romania_pwid_hiv_test %>%
-  mutate(hiv_test_rslt_lag = case_when(
-    hiv_test_rslt_lag == 1 ~ 0,
-    hiv_test_rslt_lag == 2 ~ 1,
-    TRUE ~ hiv_test_rslt_lag
-  ))
-romania_pwid_hiv_test <- romania_pwid_hiv_test %>%
-  mutate(hiv_test_rslt = case_when(
-    hiv_test_rslt == 1 ~ 0,
-    hiv_test_rslt == 2 ~ 1,
-    TRUE ~ hiv_test_rslt
-  ))
-
-# rename hiv variables
-romania_pwid_hiv_test <- romania_pwid_hiv_test %>%
-  rename(
-    hiv_baseline = hiv_test_rslt,
-    hiv_test_rslt = hiv_test_rslt_lag
+  mutate(
+    hiv_baseline = case_when(
+      hiv_baseline == 1 ~ 0,
+      hiv_baseline == 2 ~ 1,
+      TRUE ~ hiv_baseline
+    ),
+    hiv_test_rslt = case_when(
+      hiv_test_rslt == 1 ~ 0,
+      hiv_test_rslt == 2 ~ 1,
+      TRUE ~ hiv_test_rslt
+    )
   )
 
 # QA for rows where appointment_dte_lag is less than appointment_dte
 invalid_rows <- romania_pwid_hiv_test %>%
   filter(appointment_dte_lag < appointment_dte)
 cat("Number of rows where appointment_dte_lag is less than appointment_dte:", nrow(invalid_rows), "\n")
-
-romania_pwid_hiv_test <- romania_pwid_hiv_test %>%
-  mutate(
-    appointment_dte = as.Date(appointment_dte),
-    appointment_dte_lag = as.Date(appointment_dte_lag)
-  )
 
 # date format 
 romania_pwid_hiv_test <- romania_pwid_hiv_test %>%
@@ -187,36 +189,72 @@ romania_pwid_hiv_test <- romania_pwid_hiv_test %>%
     appointment_dte_lag = as.Date(appointment_dte_lag)
   )
 
+# check that dates are correctly lagged
+View(romania_pwid_hiv_test)
+
 # Save testing data
 write.csv(romania_pwid_hiv_test, "romania_pwid_hiv_test.csv")
 
-#### random-point sampling with 1000 iterations approach ####
+## overall incidence estimate
+
+# incident cases
+cases <- sum(romania_pwid_hiv_test$hiv_baseline == 0 & romania_pwid_hiv_test$hiv_test_rslt == 1, na.rm = TRUE)
+
+# person-time
+romania_pwid_hiv_test <- romania_pwid_hiv_test %>%
+  mutate(py = as.numeric(appointment_dte_lag - appointment_dte) / 365.25)
+
+person_time <- sum(romania_pwid_hiv_test$py, na.rm = TRUE)
+
+# incidence per 100 PY
+ir <- (cases / person_time) * 100
+
+# 95% CI
+lower <- (qchisq(0.025, 2 * cases) / 2) / person_time * 100
+upper <- (qchisq(0.975, 2 * (cases + 1)) / 2) / person_time * 100
+
+cat("hiv Incidence Rate:", round(ir, 2), "per 100 PY (95% CI:", round(lower, 2), "-", round(upper, 2), 
+    "| Cases:", cases, "| Person-years:", round(person_time, 2), ")\n")
+
+## random-point sampling with 10000 iterations approach
+
+# seroconversion intervals
+seroconversion_intervals <- romania_pwid_hiv_test %>%
+  filter(hiv_baseline == 0 & hiv_test_rslt == 1)
 
 # generate random infection dates
-romania_pwid_hiv_test_iterations <- romania_pwid_hiv_test %>%
+romania_pwid_hiv_test_iterations <- seroconversion_intervals %>%
   rowwise() %>%
   mutate(
+    iteration = list(1:10000),
     random_infection_dtes = list(
       as.Date(
-        runif(1000,
+        runif(10000,
               min = as.numeric(appointment_dte),
               max = as.numeric(appointment_dte_lag)),
         origin = "1970-01-01"
       )
     )
   ) %>%
-  unnest_longer(random_infection_dtes) %>%
-  group_by(id) %>%
+  unnest(c(iteration, random_infection_dtes)) %>%
+  ungroup() %>%
   mutate(
-    iteration = rep(1:1000, each = n() / 1000),
     days_risk = as.numeric(random_infection_dtes - appointment_dte),
     person_years = days_risk / 365.25,
-    midpoint_year = year(random_infection_dtes),
+    midpoint_year = lubridate::year(random_infection_dtes),
     appointment_dte_lag = random_infection_dtes
-  ) %>%
-  ungroup()
+  )
 
-View(romania_pwid_hiv_test)
+# always-negative intervals
+romania_pwid_hiv_test_negatives <- romania_pwid_hiv_test %>%
+  filter(hiv_test_rslt == 0) %>%
+  tidyr::crossing(iteration = 1:10000) %>%
+  mutate(
+    imputed_infection_dte = NA,
+    days_risk = as.numeric(days_risk),
+    person_years = days_risk / 365.25,
+    midpoint_year = NA
+  )
 
 # check for rows where appointment_dte_lag is less than appointment_dte
 invalid_rows <- romania_pwid_hiv_test_iterations %>%
@@ -224,26 +262,47 @@ invalid_rows <- romania_pwid_hiv_test_iterations %>%
 cat("rows where appointment_dte_lag is less than appointment_dte:", nrow(invalid_rows), "\n")
 
 # split each iteration into a separate dataframe
-split_dataframes <- split(romania_pwid_hiv_test_iterations, romania_pwid_hiv_test_iterations$iteration)
+romania_pwid_hiv_test_iterations <- romania_pwid_hiv_test_iterations %>%
+  mutate(
+    days_risk = as.numeric(days_risk),
+    person_years = days_risk / 365.25
+  )
 
-# name each dataframe in the list
-names(split_dataframes) <- paste0("iteration_", seq_along(split_dataframes))
-
-# create dataframe of negatives
+# only one negative interval per id
 romania_pwid_hiv_test_negatives <- romania_pwid_hiv_test %>%
   filter(hiv_test_rslt == 0) %>%
+  tidyr::crossing(iteration = 1:10000) %>%
   mutate(
-    iteration = NA,
-    random_infection_dtes = NA,
+    imputed_infection_dte = NA,
+    days_risk = as.numeric(days_risk),
     person_years = days_risk / 365.25,
     midpoint_year = NA
   )
 
-# append the negatives dataframe to each of the 1000 dataframes
-split_dataframes <- lapply(split_dataframes, function(df) {
-  combined_df <- rbind(df, romania_pwid_hiv_test_negatives)
-  return(combined_df)
-})
+split_dataframes <- split(
+  bind_rows(romania_pwid_hiv_test_iterations, romania_pwid_hiv_test_negatives),
+  bind_rows(romania_pwid_hiv_test_iterations, romania_pwid_hiv_test_negatives)$iteration
+)
+
+# name each dataframe in the list
+names(split_dataframes) <- paste0("iteration_", seq_along(split_dataframes))
+
+# Find duplicate IDs in the first iteration
+dup_ids <- names(which(table(split_dataframes[[1]]$id) > 1))
+
+# List of columns you want
+wanted_cols <- c("id", "appointment_dte", "appointment_dte_lag", "days_risk", "person_years", "hiv_test_rslt")
+
+# Only select columns that exist in the dataframe
+available_cols <- intersect(wanted_cols, colnames(split_dataframes[[1]]))
+
+duplicates_df <- split_dataframes[[1]] %>%
+  filter(id %in% dup_ids) %>%
+  dplyr::select(all_of(available_cols)) %>%
+  arrange(id, appointment_dte)
+
+print(duplicates_df)
+View(duplicates_df)
 
 ## wide format dataframes for hiv incidence analysis
 
@@ -253,9 +312,9 @@ processed_dataframes_hiv <- list()
 # years to create columns
 required_years <- 2013:2022
 
-# loop 1000 iterations
-for (i in 1:1000) {
-  cat("Processing iteration", i, "of", 1000, "\n")
+# loop 10000 iterations
+for (i in 1:10000) {
+  cat("Processing iteration", i, "of", 10000, "\n")
   
   # dataframe for the current iteration
   df <- split_dataframes[[i]]
@@ -392,3 +451,4 @@ for (i in 1:length(processed_dataframes_hiv)) {
 
 # save long dataframes
 saveRDS(processed_dataframes_long_hiv, file = "processed_dataframes_long_hiv.rds")
+

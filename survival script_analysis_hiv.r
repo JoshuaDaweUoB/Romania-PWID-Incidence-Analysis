@@ -4,22 +4,21 @@ pacman::p_load(tidyr, withr, lubridate, MASS, writexl, readxl, arsenal, survival
 ## set wd
 setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/Romania PWID/data")
 
-## Baseline prevalence and predictors of HIV infection
+# ## Baseline prevalence and predictors of hiv infection
 
-# # Load data
+# # load data
 # baseline_analysis_hiv <- romania_pwid_raw
 
 # # sequence by id 
 # baseline_analysis_hiv <- baseline_analysis_hiv %>%
-#   arrange(id) %>%
-#   mutate(id_seq = cumsum(!duplicated(id)))
+#   arrange(id) %>%  # Ensure rows are sorted by id
+#   mutate(id_seq = cumsum(!duplicated(id)))  # Increment by 1 for each new id
 
 # View(baseline_analysis_hiv)
 
-# # Find the highest value in the id_seq column
+# # highest value in the id_seq column
 # highest_id_seq <- baseline_analysis_hiv %>%
 #   summarise(max_id_seq = max(id_seq, na.rm = TRUE))
-
 # cat("Highest value in id_seq:\n")
 # print(highest_id_seq)
 
@@ -38,21 +37,21 @@ setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/
 
 # baseline_analysis_hiv <- ungroup(baseline_analysis_hiv)
 
-# # Keep only rows where appointment_seq equals 1
+# # keep rows where appointment_seq equals 1
 # baseline_analysis_hiv <- baseline_analysis_hiv %>%
 #   filter(appointment_seq == 1)
 
-# # Fill missing covariates
+# # subset romania_pwid_hiv to include only rows that match id, appointment_dte, and hiv_test_seq in romania_pwid_hiv_test
 # baseline_analysis_hiv <- baseline_analysis_hiv %>%
 #   mutate(
 #     sex_work_current = ifelse(is.na(sex_work_current), 0, sex_work_current),
 #     msm_current = ifelse(is.na(msm_current), 0, msm_current),
 #     homeless_current = ifelse(is.na(homeless_current), 0, homeless_current),
 #     ethnic_roma = ifelse(is.na(ethnic_roma), 0, ethnic_roma),
-#     gender = ifelse(gender == 2, 0, gender)
+#     gender = ifelse(gender == 2, 0, gender) 
 #   )
 
-# # Ensure dob is in the correct Date format
+# # ensure dob is in the correct Date format
 # baseline_analysis_hiv <- baseline_analysis_hiv %>%
 #   mutate(dob = as.Date(dob, format = "%d/%m/%Y")) %>%
 #   mutate(age_years = as.numeric(difftime(appointment_dte, dob, units = "days")) / 365.25) %>%
@@ -70,7 +69,7 @@ setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/
 # baseline_analysis_hiv <- baseline_analysis_hiv %>%
 #   filter(hiv_test_rslt %in% c(0, 1))
 
-# # Create a summary table with variables as rows and hiv_test_rslt levels as columns
+# # summary table with variables as rows and hiv_test_rslt levels as columns
 # hiv_summary_table <- baseline_analysis_hiv %>%
 #   dplyr::select(sex_work_current, homeless_current, ethnic_roma, gender, age_bin, hiv_test_rslt) %>%
 #   pivot_longer(
@@ -86,25 +85,26 @@ setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/
 #   pivot_wider(
 #     names_from = hiv_test_rslt,
 #     values_from = Count,
-#     values_fill = 0
+#     values_fill = 0  # Fill missing values with 0
 #   ) %>%
 #   rename(
-#     HIV_Negative = `0`,
-#     HIV_Positive = `1`
+#     hiv_Negative = `0`,
+#     hiv_Positive = `1`
 #   ) %>%
 #   mutate(
-#     Total = HIV_Negative + HIV_Positive,
-#     Proportion_Positive = (HIV_Positive / Total) * 100
+#     Total = hiv_Negative + hiv_Positive,
+#     Proportion_Positive = (hiv_Positive / Total) * 100
 #   )
 
+# # print and save the summary table
 # print(hiv_summary_table)
 # write.csv(hiv_summary_table, "hiv_summary_table.csv", row.names = FALSE)
 
-# # Filter the dataset to include only rows where gender == 1
+# # filter dataset to include only rows where gender == 1
 # baseline_analysis_hiv_gender_1 <- baseline_analysis_hiv %>%
 #   filter(gender == 1)
 
-# # Create a summary table for msm_current with hiv_test_rslt levels as columns
+# # summary table for msm_current with hiv_test_rslt levels as columns
 # msm_summary_table <- baseline_analysis_hiv_gender_1 %>%
 #   dplyr::select(msm_current, hiv_test_rslt) %>%
 #   group_by(msm_current, hiv_test_rslt) %>%
@@ -118,14 +118,15 @@ setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/
 #     values_fill = 0
 #   ) %>%
 #   rename(
-#     HIV_Negative = `0`,
-#     HIV_Positive = `1`
+#     hiv_Negative = `0`,
+#     hiv_Positive = `1`
 #   ) %>%
 #   mutate(
-#     Total = HIV_Negative + HIV_Positive,
-#     Proportion_Positive = (HIV_Positive / Total) * 100
+#     Total = hiv_Negative + hiv_Positive,
+#     Proportion_Positive = (hiv_Positive / Total) * 100
 #   )
 
+# # print and save msm summary table
 # print(msm_summary_table)
 # write.csv(msm_summary_table, "msm_summary_table_gender_1.csv", row.names = FALSE)
 
@@ -173,7 +174,7 @@ setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/
 # romania_pwid_hiv_tb2 <- romania_pwid_hiv_tb2 %>%
 #   filter(hiv_test_seq == 1)
 
-# # Create a summary table for hiv_test_seq_bin
+# # summary table for hiv_test_seq_bin
 # hiv_test_seq_bin_summary <- romania_pwid_hiv_tb2 %>%
 #   group_by(hiv_test_seq_bin) %>%
 #   summarise(
@@ -181,16 +182,18 @@ setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/
 #     Proportion = (n() / nrow(romania_pwid_hiv_tb2)) * 100
 #   )
 
-# cat("Summary table for hiv_test_seq_bin:\n")
+# # summary table
 # print(hiv_test_seq_bin_summary)
 
-# # Ensure dob is in the correct Date format
+# # ensure dob is in the correct Date format
 # romania_pwid_hiv_tb2 <- romania_pwid_hiv_tb2 %>%
 #   mutate(dob = as.Date(dob, format = "%d/%m/%Y")) %>%
 #   mutate(age_years = as.numeric(difftime(appointment_dte, dob, units = "days")) / 365.25) %>%
 #   mutate(age_bin = ifelse(age_years < 30, 0, 1))
 
 # # create table of differences between included and excluded participants
+
+# # create a summary table
 # summary_table <- romania_pwid_hiv_tb2 %>%
 #   dplyr::select(sex_work_current, homeless_current, ethnic_roma, age_bin, gender, hiv_test_seq_bin) %>%
 #   pivot_longer(
@@ -217,59 +220,54 @@ setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/
 #     Proportion_Multiple_Tests = (Multiple_Tests / Total) * 100
 #   )
 
+# # print and save summary table
 # print(summary_table)
 # write.csv(summary_table, "hiv_test_seq_bin_summary_table.csv", row.names = FALSE)
 
-## longitudinal analysis- approach 1
+## longitudinal analysis with Rubin's correction
 
-# View the first processed dataframe for verification
-View(processed_dataframes_long_hiv[[1]])
-
-# Calculate the total of the hiv_test_rslt and time_at_risk columns
-totals <- processed_dataframes_long_hiv[[1]] %>%
-  summarise(
-    total_hiv_test_rslt = sum(hiv_test_rslt, na.rm = TRUE),
-    total_time_at_risk = sum(time_at_risk, na.rm = TRUE)
-  )
-
-cat("Totals for hiv_test_rslt and time_at_risk:\n")
-print(totals)
-
-# Verify the original dataframe before processing
-original_totals <- processed_dataframes[[1]] %>%
-  summarise(
-    total_hiv_test_rslt = sum(hiv_test_rslt, na.rm = TRUE),
-    total_person_years = sum(person_years, na.rm = TRUE)
-  )
-
-cat("Original totals for hiv_test_rslt and person_years:\n")
-print(original_totals)
-
-View(processed_dataframes_long[[1]])
-
-# Sequence hiv_test_rslt by id and identify any IDs with multiple positive hiv_test_rslts
-multiple_positive_ids <- processed_dataframes_long[[1]] %>%
+# sequence hiv_test_rslt by id and identify any IDs with multiple positive hiv_test_rslts
+multiple_positive_ids <- processed_dataframes_long_hiv[[1]] %>%
   group_by(id) %>%
   summarise(total_positive = sum(hiv_test_rslt, na.rm = TRUE)) %>%
   filter(total_positive > 1)
 
-cat("IDs with multiple positive hiv_test_rslts:\n")
+# print IDs with multiple positive hiv_test_rslts
 print(multiple_positive_ids)
 
-multiple_positive_rows <- processed_dataframes_long[[1]] %>%
+# rows with multiple positive hiv_test_rslts for verification
+multiple_positive_rows <- processed_dataframes_long_hiv[[1]] %>%
   filter(id %in% multiple_positive_ids$id)
 
-# load the dataframes
-processed_dataframes <- readRDS("processed_dataframes.rds")
-processed_dataframes_long <- readRDS("processed_dataframes_long.rds")
+# load dataframes
+processed_dataframes_hiv <- readRDS("processed_dataframes_hiv.rds")
+processed_dataframes_long_hiv <- readRDS("processed_dataframes_long_hiv.rds")
+
+# Count incident infections (hiv_test_rslt == 1) in the first long dataframe
+incident_infections <- sum(processed_dataframes_hiv[[1]]$hiv_test_rslt == 1, na.rm = TRUE)
+incident_infections_long <- sum(processed_dataframes_long_hiv[[1]]$hiv_test_rslt == 1, na.rm = TRUE)
+
+cat("Number of incident infections in the first wide dataframe:", incident_infections, "\n")
+cat("Number of incident infections in the first long dataframe:", incident_infections_long, "\n")
 
 # create 1000 dataframes of summed yearly person-years and incident cases
+
+# list to store the summed dataframes
 summed_dataframes <- list()
 
+# loop through all 1000 processed dataframes
 for (i in 1:1000) {
   cat("Processing summed dataframe for iteration", i, "of", 1000, "\n")
-  df <- processed_dataframes[[i]]
-  if (is.null(df)) next
+  
+  # processed dataframe for current iteration
+  df <- processed_dataframes_hiv[[i]]
+  
+  # check dataframe is NULL
+  if (is.null(df)) {
+    next
+  }
+  
+  # sum columns
   summed_df <- df %>%
     summarise(
       hiv_test_rslt = sum(hiv_test_rslt, na.rm = TRUE),
@@ -296,24 +294,20 @@ for (i in 1:1000) {
       hiv_test_2021 = sum(hiv_test_2021, na.rm = TRUE),
       hiv_test_2022 = sum(hiv_test_2022, na.rm = TRUE)
     )
+  
+  # store summed dataframe in the list
   summed_dataframes[[i]] <- summed_df
 }
 
-View(summed_dataframes[[1]])
-View(summed_dataframes[[1000]])
+# combine summed dataframes
+final_summed_df_hiv <- bind_rows(summed_dataframes[1:1000])
 
-final_summed_df <- bind_rows(summed_dataframes[1:1000])
-
-cat("Final combined dataframe:\n")
-print(head(final_summed_df))
-View(final_summed_df)
-
-# Create a new column hiv_test_qa which sums up all the hiv_test_20xx columns
-final_summed_df <- final_summed_df %>%
+# new column hiv_test_qa which sums up all the hiv_test_20xx columns
+final_summed_df_hiv <- final_summed_df_hiv %>%
   mutate(hiv_test_qa = rowSums(across(starts_with("hiv_test_20")), na.rm = TRUE))
 
-# Add columns for overall incidence rate and 95% confidence interval
-final_summed_df <- final_summed_df %>%
+# columns for overall incidence rate and 95% confidence interval
+final_summed_df_hiv <- final_summed_df_hiv %>%
   mutate(
     overall_incidence_rate = (hiv_test_rslt / person_years) * 100,
     standard_error = sqrt(hiv_test_rslt) / person_years * 100,
@@ -321,7 +315,7 @@ final_summed_df <- final_summed_df %>%
     upper_bound_95CI = overall_incidence_rate + (1.96 * standard_error)
   )
 
-final_summed_df <- final_summed_df %>%
+final_summed_df_hiv <- final_summed_df_hiv %>%
   mutate(
     incidence_rate_2013 = hiv_test_2013 / X2013 * 100,
     incidence_rate_2014 = hiv_test_2014 / X2014 * 100,
@@ -335,89 +329,83 @@ final_summed_df <- final_summed_df %>%
     incidence_rate_2022 = hiv_test_2022 / X2022 * 100
   )
 
-View(final_summed_df)
+# calculate mean, 2.5th percentile, and 97.5th percentile for the overall incidence rate
+mean_incidence_rate <- mean(final_summed_df_hiv$overall_incidence_rate, na.rm = TRUE)
+lower_bound_overall <- quantile(final_summed_df_hiv$overall_incidence_rate, 0.025, na.rm = TRUE)
+upper_bound_overall <- quantile(final_summed_df_hiv$overall_incidence_rate, 0.975, na.rm = TRUE)
 
-mean_incidence_rate <- mean(final_summed_df$overall_incidence_rate, na.rm = TRUE)
-lower_bound_overall <- quantile(final_summed_df$overall_incidence_rate, 0.025, na.rm = TRUE)
-upper_bound_overall <- quantile(final_summed_df$overall_incidence_rate, 0.975, na.rm = TRUE)
-
-yearly_means <- sapply(2013:2022, function(year) {
-  if (paste0("incidence_rate_", year) %in% colnames(final_summed_df)) {
-    mean(final_summed_df[[paste0("incidence_rate_", year)]], na.rm = TRUE)
+# calculate the mean incidence rates for each year from 2013 to 2022
+yearly_means_hiv <- sapply(2013:2022, function(year) {
+  if (paste0("incidence_rate_", year) %in% colnames(final_summed_df_hiv)) {
+    mean(final_summed_df_hiv[[paste0("incidence_rate_", year)]], na.rm = TRUE)
   } else {
     NA
   }
 })
-cat("Yearly means:\n")
-print(yearly_means)
+print(yearly_means_hiv)
 
-yearly_lower_bounds <- sapply(2013:2022, function(year) {
-  if (paste0("incidence_rate_", year) %in% colnames(final_summed_df)) {
-    quantile(final_summed_df[[paste0("incidence_rate_", year)]], 0.025, na.rm = TRUE)
+yearly_lower_bounds_hiv <- sapply(2013:2022, function(year) {
+  if (paste0("incidence_rate_", year) %in% colnames(final_summed_df_hiv)) {
+    quantile(final_summed_df_hiv[[paste0("incidence_rate_", year)]], 0.025, na.rm = TRUE)
   } else {
     NA
   }
 })
-cat("Yearly lower bounds:\n")
-print(yearly_lower_bounds)
+print(yearly_lower_bounds_hiv)
 
-yearly_upper_bounds <- sapply(2013:2022, function(year) {
-  if (paste0("incidence_rate_", year) %in% colnames(final_summed_df)) {
-    quantile(final_summed_df[[paste0("incidence_rate_", year)]], 0.975, na.rm = TRUE)
+yearly_upper_bounds_hiv <- sapply(2013:2022, function(year) {
+  if (paste0("incidence_rate_", year) %in% colnames(final_summed_df_hiv)) {
+    quantile(final_summed_df_hiv[[paste0("incidence_rate_", year)]], 0.975, na.rm = TRUE)
   } else {
     NA
   }
 })
-cat("Yearly upper bounds:\n")
-print(yearly_upper_bounds)
+print(yearly_upper_bounds_hiv)
 
-mean_hiv_infections <- sapply(2013:2022, function(year) {
-  if (paste0("hiv_test_", year) %in% colnames(final_summed_df)) {
-    mean(final_summed_df[[paste0("hiv_test_", year)]], na.rm = TRUE)
+mean_hiv_infections_hiv <- sapply(2013:2022, function(year) {
+  if (paste0("hiv_test_", year) %in% colnames(final_summed_df_hiv)) {
+    mean(final_summed_df_hiv[[paste0("hiv_test_", year)]], na.rm = TRUE)
   } else {
     NA
   }
 })
-cat("Mean HIV infections:\n")
-print(mean_hiv_infections)
+print(mean_hiv_infections_hiv)
 
-mean_person_years <- sapply(2013:2022, function(year) {
-  if (paste0("X", year) %in% colnames(final_summed_df)) {
-    mean(final_summed_df[[paste0("X", year)]], na.rm = TRUE)
+mean_person_years_hiv <- sapply(2013:2022, function(year) {
+  if (paste0("X", year) %in% colnames(final_summed_df_hiv)) {
+    mean(final_summed_df_hiv[[paste0("X", year)]], na.rm = TRUE)
   } else {
     NA
   }
 })
-cat("Mean person-years:\n")
-print(mean_person_years)
+print(mean_person_years_hiv)
 
-overall_mean_hiv_infections <- mean(rowSums(final_summed_df[paste0("hiv_test_", 2013:2022)], na.rm = TRUE), na.rm = TRUE)
-overall_mean_person_years <- mean(rowSums(final_summed_df[paste0("X", 2013:2022)], na.rm = TRUE), na.rm = TRUE)
+# overall mean number of hiv infections and person-years
+overall_mean_infections_hiv <- mean(rowSums(final_summed_df_hiv[paste0("hiv_test_", 2013:2022)], na.rm = TRUE), na.rm = TRUE)
+overall_mean_person_years_hiv <- mean(rowSums(final_summed_df_hiv[paste0("X", 2013:2022)], na.rm = TRUE), na.rm = TRUE)
 
-results_df_mean <- data.frame(
+# dataframe with the overall and yearly incidence rates and lower bounds (means)
+results_df_mean_hiv <- data.frame(
   Incidence_year = c("Overall incidence rate", as.character(2013:2022)),
-  Incidence_rate = c(mean_incidence_rate, yearly_means),
-  Lower_bound = c(lower_bound_overall, yearly_lower_bounds),
-  Upper_bound = c(upper_bound_overall, yearly_upper_bounds),
-  Mean_HIV_infections = c(overall_mean_hiv_infections, mean_hiv_infections),
-  Mean_person_years = c(overall_mean_person_years, mean_person_years)
+  Incidence_rate = c(mean_incidence_rate_hiv, yearly_means_hiv),
+  Lower_bound = c(lower_bound_overall_hiv, yearly_lower_bounds_hiv),
+  Upper_bound = c(upper_bound_overall_hiv, yearly_upper_bounds_hiv),
+  Mean_hiv_infections = c(overall_mean_infections_hiv, mean_hiv_infections_hiv),
+  Mean_person_years = c(overall_mean_person_years_hiv, mean_person_years_hiv)
 )
 
-cat("Results dataframe (means):\n")
-print(results_df_mean)
-View(results_df_mean)
+# save overall incidence results
+write.csv(results_df_mean_hiv, "overall_incidence_results_df_mean_hiv.csv", row.names = TRUE)
 
-write.csv(results_df_mean, "overall_incidence_results_df_mean_hiv.csv", row.names = TRUE)
+# list to store the summed dataframes
+summed_dataframes_two_yearly_hiv <- list()
 
-# Initialize an empty list to store the summed dataframes
-summed_dataframes_two_yearly <- list()
-
-# Loop through all 1000 processed dataframes
+# loop all 1000 processed dataframes
 for (i in 1:1000) {
-  cat("Processing summed dataframe for iteration", i, "of", 1000, "\n")
+  cat("Iteration", i, "of", 1000, "\n")
   
   # Get the processed dataframe for the current iteration
-  df <- processed_dataframes[[i]]
+  df <- processed_dataframes_hiv[[i]]
   
   # Check if the dataframe is NULL
   if (is.null(df)) {
@@ -425,7 +413,7 @@ for (i in 1:1000) {
   }
   
   # Sum the specified columns for two-year intervals
-  summed_df_two_yearly <- df %>%
+  summed_df_two_yearly_hiv <- df %>%
     summarise(
       hiv_test_2013_2014 = sum(hiv_test_2013, hiv_test_2014, na.rm = TRUE),
       hiv_test_2015_2016 = sum(hiv_test_2015, hiv_test_2016, na.rm = TRUE),
@@ -439,15 +427,15 @@ for (i in 1:1000) {
       person_years_2021_2022 = sum(X2021, X2022, na.rm = TRUE)
     )
   
-  # Store the summed dataframe in the list
-  summed_dataframes_two_yearly[[i]] <- summed_df_two_yearly
+  # store summed dataframe in the list
+  summed_dataframes_two_yearly_hiv[[i]] <- summed_df_two_yearly_hiv
 }
 
-# Combine the dataframes from all iterations
-final_summed_df_two_yearly <- bind_rows(summed_dataframes_two_yearly)
+# combine dataframes from all iterations
+final_summed_df_two_yearly_hiv <- bind_rows(summed_dataframes_two_yearly_hiv)
 
-# Add incidence rate columns for each two-year interval
-final_summed_df_two_yearly <- final_summed_df_two_yearly %>%
+# add incidence rate columns for each two-year interval
+final_summed_df_two_yearly_hiv <- final_summed_df_two_yearly_hiv %>%
   mutate(
     incidence_rate_2013_2014 = hiv_test_2013_2014 / person_years_2013_2014 * 100,
     incidence_rate_2015_2016 = hiv_test_2015_2016 / person_years_2015_2016 * 100,
@@ -456,121 +444,43 @@ final_summed_df_two_yearly <- final_summed_df_two_yearly %>%
     incidence_rate_2021_2022 = hiv_test_2021_2022 / person_years_2021_2022 * 100
   )
 
-cat("Updated columns in final_summed_df_two_yearly:\n")
-print(colnames(final_summed_df_two_yearly))
-
-cat("Final combined dataframe:\n")
-print(head(final_summed_df_two_yearly))
-View(final_summed_df_two_yearly)
-
-cat("Columns in final_summed_df_two_yearly:\n")
-print(colnames(final_summed_df_two_yearly))
-
 # Rubin's rules for two-year intervals
 intervals <- c("2013_2014", "2015_2016", "2017_2018", "2019_2020", "2021_2022")
 rubin_results <- lapply(intervals, function(interval) {
-  rates <- final_summed_df_two_yearly[[paste0("incidence_rate_", interval)]]
+  rates <- final_summed_df_two_yearly_hiv[[paste0("incidence_rate_", interval)]]
   rates <- rates[!is.na(rates)]
   M <- length(rates)
   mean_ir <- mean(rates)
-  between_var <- var(rates)
-  within_var <- 0
+  
+  # Calculate standard error for each imputation
+  infections <- final_summed_df_two_yearly_hiv[[paste0("hiv_test_", interval)]]
+  person_years <- final_summed_df_two_yearly_hiv[[paste0("person_years_", interval)]]
+  se_vector <- sqrt(infections) / person_years * 100
+  
+  within_var <- mean(se_vector^2, na.rm = TRUE)
+  between_var <- var(rates, na.rm = TRUE)
   total_var <- within_var + (1 + 1/M) * between_var
   se_total <- sqrt(total_var)
   ci_lower <- mean_ir - 1.96 * se_total
   ci_upper <- mean_ir + 1.96 * se_total
   data.frame(
     Interval = gsub("_", "-", interval),
-    Mean_Incidence_rate = mean_ir,
-    Rubin_Lower_95CI = ci_lower,
-    Rubin_Upper_95CI = ci_upper
+    Incidence_rate = mean_ir,
+    Lower_bound = ci_lower,
+    Upper_bound = ci_upper,
+    Mean_hiv_infections = mean(infections, na.rm = TRUE),
+    Mean_person_years = mean(person_years, na.rm = TRUE)
   )
 })
-rubin_results_df <- do.call(rbind, rubin_results)
 
-cat("Rubin's rules results for two-year intervals:\n")
-print(rubin_results_df)
-View(rubin_results_df)
+results_df_two_yearly_rubin_hiv <- do.call(rbind, rubin_results)
+print(results_df_two_yearly_rubin_hiv)
 
-# Calculate the mean incidence rates for each two-year interval
-two_yearly_means <- sapply(intervals, function(interval) {
-  if (paste0("incidence_rate_", interval) %in% colnames(final_summed_df_two_yearly)) {
-    mean(final_summed_df_two_yearly[[paste0("incidence_rate_", interval)]], na.rm = TRUE)
-  } else {
-    NA
-  }
-})
-cat("Two-yearly means:\n")
-print(two_yearly_means)
+# save two-year interval results
+write.csv(results_df_two_yearly_rubin_hiv, "results_df_two_yearly_rubin_hiv.csv", row.names = FALSE)
 
-# Calculate means for HIV infections and person-years for each two-year interval
-mean_hiv_infections_two_yearly <- sapply(
-  intervals,
-  function(interval) {
-    colname <- paste0("hiv_test_", interval)
-    if (colname %in% colnames(final_summed_df_two_yearly)) {
-      mean(final_summed_df_two_yearly[[colname]], na.rm = TRUE)
-    } else {
-      NA
-    }
-  }
-)
-
-mean_person_years_two_yearly <- sapply(
-  intervals,
-  function(interval) {
-    colname <- paste0("person_years_", interval)
-    if (colname %in% colnames(final_summed_df_two_yearly)) {
-      mean(final_summed_df_two_yearly[[colname]], na.rm = TRUE)
-    } else {
-      NA
-    }
-  }
-)
-
-# Calculate lower and upper bounds for each two-year interval
-two_yearly_lower_bounds <- sapply(
-  intervals,
-  function(interval) {
-    colname <- paste0("incidence_rate_", interval)
-    if (colname %in% colnames(final_summed_df_two_yearly)) {
-      quantile(final_summed_df_two_yearly[[colname]], 0.025, na.rm = TRUE)
-    } else {
-      NA
-    }
-  }
-)
-
-two_yearly_upper_bounds <- sapply(
-  intervals,
-  function(interval) {
-    colname <- paste0("incidence_rate_", interval)
-    if (colname %in% colnames(final_summed_df_two_yearly)) {
-      quantile(final_summed_df_two_yearly[[colname]], 0.975, na.rm = TRUE)
-    } else {
-      NA
-    }
-  }
-)
-
-# Create a new dataframe with the two-year interval results using means
-results_df_two_yearly_mean <- data.frame(
-  Interval = c("2013-2014", "2015-2016", "2017-2018", "2019-2020", "2021-2022"),
-  Incidence_rate = two_yearly_means,
-  Lower_bound = two_yearly_lower_bounds,
-  Upper_bound = two_yearly_upper_bounds,
-  Mean_HIV_infections = mean_hiv_infections_two_yearly,
-  Mean_person_years = mean_person_years_two_yearly
-)
-
-cat("Two-Year Interval Results dataframe (means):\n")
-print(results_df_two_yearly_mean)
-View(results_df_two_yearly_mean)
-
-write.csv(results_df_two_yearly_mean, "results_df_two_yearly_mean_hiv.csv", row.names = FALSE)
-
-# figure of incidence over time (means)
-HIV_incidence_plot_mean <- ggplot(results_df_two_yearly_mean, aes(x = Interval, y = Incidence_rate)) +
+# hiv incidence over time
+hiv_incidence_plot_rubin <- ggplot(results_df_two_yearly_rubin_hiv, aes(x = Interval, y = Incidence_rate)) +
   geom_line(group = 1, color = "gray") + 
   geom_point(shape = 18, size = 3, color = "gray") + 
   geom_errorbar(aes(ymin = Lower_bound, ymax = Upper_bound), width = 0.2, color = "black") +
@@ -587,4 +497,4 @@ HIV_incidence_plot_mean <- ggplot(results_df_two_yearly_mean, aes(x = Interval, 
     plot.background = element_rect(fill = "white", color = NA)
   )
 
-ggsave("plots/HIV_incidence_plot_mean.png", plot = HIV_incidence_plot_mean, width = 8, height = 6,
+ggsave("plots/hiv_incidence_plot_rubin.png", plot = hiv_incidence_plot_rubin, width = 8, height = 6, dpi = 300)

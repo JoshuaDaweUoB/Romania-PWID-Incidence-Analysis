@@ -246,18 +246,20 @@ processed_dataframes_long_hcv <- readRDS("processed_dataframes_long_hcv.rds")
 # Count incident infections (hcv_test_rslt == 1) in the first long dataframe
 incident_infections <- sum(processed_dataframes_hcv[[1]]$hcv_test_rslt == 1, na.rm = TRUE)
 incident_infections_long <- sum(processed_dataframes_long_hcv[[1]]$hcv_test_rslt == 1, na.rm = TRUE)
+person_years_long <- sum(processed_dataframes_long_hcv[[1]]$time_at_risk, na.rm = TRUE)
 
 cat("Number of incident infections in the first wide dataframe:", incident_infections, "\n")
-cat("Number of incident infections in the first long dataframe:", incident_infections_long, "\n")
+cat("Number of incident infections in the first long dataframe:", incident_infections_long, 
+    "| Person-years at risk:", round(person_years_long, 2), "\n")
 
-# create 1000 dataframes of summed yearly person-years and incident cases
+# create 10000 dataframes of summed yearly person-years and incident cases
 
 # list to store the summed dataframes
 summed_dataframes <- list()
 
-# loop through all 1000 processed dataframes
-for (i in 1:1000) {
-  cat("Processing summed dataframe for iteration", i, "of", 1000, "\n")
+# loop through all 10000 processed dataframes
+for (i in 1:10000) {
+  cat("Processing summed dataframe for iteration", i, "of", 10000, "\n")
   
   # processed dataframe for current iteration
   df <- processed_dataframes_hcv[[i]]
@@ -300,7 +302,7 @@ for (i in 1:1000) {
 }
 
 # combine summed dataframes
-final_summed_df_hcv <- bind_rows(summed_dataframes[1:1000])
+final_summed_df_hcv <- bind_rows(summed_dataframes[1:10000])
 
 # new column hcv_test_qa which sums up all the hcv_test_20xx columns
 final_summed_df_hcv <- final_summed_df_hcv %>%
@@ -400,9 +402,9 @@ write.csv(results_df_mean_hcv, "overall_incidence_results_df_mean_hcv.csv", row.
 # list to store the summed dataframes
 summed_dataframes_two_yearly_hcv <- list()
 
-# loop all 1000 processed dataframes
-for (i in 1:1000) {
-  cat("Iteration", i, "of", 1000, "\n")
+# loop all 10000 processed dataframes
+for (i in 1:10000) {
+  cat("Iteration", i, "of", 10000, "\n")
   
   # Get the processed dataframe for the current iteration
   df <- processed_dataframes_hcv[[i]]
