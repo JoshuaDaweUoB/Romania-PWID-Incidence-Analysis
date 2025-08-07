@@ -22,10 +22,10 @@ setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/
 # cat("Highest value in id_seq:\n")
 # print(highest_id_seq)
 
-# # remove rows where hiv test result is missing
+# # remove rows where hcv test result is missing
 # baseline_analysis_hcv <- baseline_analysis_hcv[!is.na(baseline_analysis_hcv$hcv_test_rslt), ]
 
-# # remove rows where hiv test result is indeterminate
+# # remove rows where hcv test result is indeterminate
 # baseline_analysis_hcv <- baseline_analysis_hcv %>%
 #   filter(!hcv_test_rslt == 3)
 
@@ -226,6 +226,10 @@ setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/
 
 ## longitudinal analysis with Rubin's correction
 
+# load dataframes
+processed_dataframes_hcv <- readRDS("processed_dataframes_hcv.rds")
+processed_dataframes_long_hcv <- readRDS("processed_dataframes_long_hcv.rds")
+
 # sequence hcv_test_rslt by id and identify any IDs with multiple positive hcv_test_rslts
 multiple_positive_ids <- processed_dataframes_long_hcv[[1]] %>%
   group_by(id) %>%
@@ -238,10 +242,6 @@ print(multiple_positive_ids)
 # rows with multiple positive hcv_test_rslts for verification
 multiple_positive_rows <- processed_dataframes_long_hcv[[1]] %>%
   filter(id %in% multiple_positive_ids$id)
-
-# load dataframes
-processed_dataframes_hcv <- readRDS("processed_dataframes_hcv.rds")
-processed_dataframes_long_hcv <- readRDS("processed_dataframes_long_hcv.rds")
 
 # Count incident infections (hcv_test_rslt == 1) in the first long dataframe
 incident_infections <- sum(processed_dataframes_hcv[[1]]$hcv_test_rslt == 1, na.rm = TRUE)
@@ -454,7 +454,7 @@ rubin_results <- lapply(intervals, function(interval) {
   M <- length(rates)
   mean_ir <- mean(rates)
   
-  # Calculate standard error for each imputation
+  # standard error for each imputation
   infections <- final_summed_df_two_yearly_hcv[[paste0("hcv_test_", interval)]]
   person_years <- final_summed_df_two_yearly_hcv[[paste0("person_years_", interval)]]
   se_vector <- sqrt(infections) / person_years * 100
@@ -476,13 +476,109 @@ rubin_results <- lapply(intervals, function(interval) {
 })
 
 results_df_two_yearly_rubin_hcv <- do.call(rbind, rubin_results)
+
+# Rubin's rule for overall incidence
+overall_rates <- final_summed_df_hcv$overall_incidence_rate
+overall_rates <- overall_rates[!is.na(overall_rates)]
+M <- length(overall_rates)
+mean_incidence_rate <- mean(overall_rates)
+
+# standard error for each imputation
+infections <- final_summed_df_hcv$hcv_test_rslt
+person_years <- final_summed_df_hcv$person_years
+se_vector <- sqrt(infections) / person_years * 100
+
+within_var <- mean(se_vector^2, na.rm = TRUE)
+between_var <- var(overall_rates, na.rm = TRUE)
+total_var <- within_var + (1 + 1/M) * between_var
+se_total <- sqrt(total_var)
+lower_bound_overall <- mean_incidence_rate - 1.96 * se_total
+upper_bound_overall <- mean_incidence_rate + 1.96 * se_total
+
+# means for infections and person-years
+overall_mean_infections_hcv <- mean(infections, na.rm = TRUE)
+overall_mean_person_years_hcv <- mean(person_years, na.rm = TRUE)
+
+# row for overall incidence
+overall_row <- data.frame(
+  Interval = "Overall",
+  Incidence_rate = mean_incidence_rate,
+  Lower_bound = lower_bound_overall,
+  Upper_bound = upper_bound_overall,
+  Mean_HCV_infections = overall_mean_infections_hcv,
+  Mean_person_years = overall_mean_person_years_hcv
+)
+
+# combine with existing dataframe
+results_df_two_yearly_rubin_hcv <- rbind(overall_row, results_df_two_yearly_rubin_hcv)
+
+# negative incidence rates or bounds to 0.001
+results_df_two_yearly_rubin_hcv <- results_df_two_yearly_rubin_hcv %>%
+  mutate(
+    Incidence_rate = ifelse(Incidence_rate < 0, 0.001, Incidence_rate),
+    Lower_bound = ifelse(Lower_bound < 0, 0.001, Lower_bound),
+    Upper_bound = ifelse(Upper_bound < 0, 0.001, Upper_bound)
+  )
+
 print(results_df_two_yearly_rubin_hcv)
 
 # save two-year interval results
 write.csv(results_df_two_yearly_rubin_hcv, "results_df_two_yearly_rubin_hcv.csv", row.names = FALSE)
 
+## rate ratios for trends in incidence
+
+# load two-yearly interval data
+results_df_two_yearly_rubin_hcv <- read.csv("results_df_two_yearly_rubin_hcv.csv", stringsAsFactors = FALSE)
+
+# numeric columns
+results_df_two_yearly_rubin_hcv$Mean_HCV_infections <- as.numeric(results_df_two_yearly_rubin_hcv$Mean_HCV_infections)
+results_df_two_yearly_rubin_hcv$Mean_person_years <- as.numeric(results_df_two_yearly_rubin_hcv$Mean_person_years)
+
+# assign 2017-2018 as reference category
+ref_idx <- which(results_df_two_yearly_rubin_hcv$Interval == "2017-2018")
+ref_cases <- cases[ref_idx]
+ref_py <- py[ref_idx]
+
+# rate ratio using Poisson approximation
+calculate_rr <- function(c1, py1, c2, py2) {
+  if (c1 == 0 || py1 == 0 || c2 == 0 || py2 == 0) {
+    return(c(NA, NA, NA))
+  }
+  rr <- (c1 / py1) / (c2 / py2)
+  se_log_rr <- sqrt(1 / c1 + 1 / c2)
+  lower <- exp(log(rr) - 1.96 * se_log_rr)
+  upper <- exp(log(rr) + 1.96 * se_log_rr)
+  c(rr, lower, upper)
+}
+
+# dataframe
+rr_exact <- data.frame(
+  Interval = results_df_two_yearly_rubin_hcv$Interval,
+  Rate_Ratio = NA,
+  Lower_95CI = NA,
+  Upper_95CI = NA
+)
+
+# loop through intervals
+for (i in seq_along(cases)) {
+  if (i == ref_idx) {
+    rr_exact[i, 2:4] <- c(1, 1, 1)
+  } else {
+    rr_exact[i, 2:4] <- calculate_rr(cases[i], py[i], ref_cases, ref_py)
+  }
+}
+
+# combine results
+results_df_two_yearly_rubin_hcv <- cbind(results_df_two_yearly_rubin_hcv, rr_exact[, -1])
+
+# save two-year interval results
+write.csv(results_df_two_yearly_rubin_hcv, "results_df_two_yearly_rubin_hcv_rr.csv", row.names = FALSE)
+
+# load two-year interval results
+results_df_two_yearly_rubin_hcv <- read.csv("results_df_two_yearly_rubin_hcv.csv", stringsAsFactors = FALSE)
+
 # hcv incidence over time
-HCV_incidence_plot_rubin <- ggplot(results_df_two_yearly_rubin_hcv, aes(x = Interval, y = Incidence_rate)) +
+hcv_incidence_plot_rubin <- ggplot(results_df_two_yearly_rubin_hcv, aes(x = Interval, y = Incidence_rate)) +
   geom_line(group = 1, color = "gray") + 
   geom_point(shape = 18, size = 3, color = "gray") + 
   geom_errorbar(aes(ymin = Lower_bound, ymax = Upper_bound), width = 0.2, color = "black") +
@@ -499,4 +595,4 @@ HCV_incidence_plot_rubin <- ggplot(results_df_two_yearly_rubin_hcv, aes(x = Inte
     plot.background = element_rect(fill = "white", color = NA)
   )
 
-ggsave("plots/HCV_incidence_plot_rubin.png", plot = HCV_incidence_plot_rubin, width = 8, height = 6, dpi = 300)
+ggsave("plots/hcv_incidence_plot_rubin.png", plot = hcv_incidence_plot_rubin, width = 10, height = 6, dpi = 300)

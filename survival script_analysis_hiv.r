@@ -1,5 +1,5 @@
 ## load packages
-pacman::p_load(tidyr, withr, lubridate, MASS, writexl, readxl, arsenal, survival, broom, ggplot2, dplyr)
+pacman::p_load(tidyr, withr, lubridate, MASS, writexl, readxl, arsenal, epitools, survival, broom, ggplot2, dplyr)
 
 ## set wd
 setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/Romania PWID/data")
@@ -454,7 +454,7 @@ rubin_results <- lapply(intervals, function(interval) {
   M <- length(rates)
   mean_ir <- mean(rates)
   
-  # Calculate standard error for each imputation
+  # standard error for each imputation
   infections <- final_summed_df_two_yearly_hiv[[paste0("hiv_test_", interval)]]
   person_years <- final_summed_df_two_yearly_hiv[[paste0("person_years_", interval)]]
   se_vector <- sqrt(infections) / person_years * 100
@@ -478,8 +478,104 @@ rubin_results <- lapply(intervals, function(interval) {
 results_df_two_yearly_rubin_hiv <- do.call(rbind, rubin_results)
 print(results_df_two_yearly_rubin_hiv)
 
+# Rubin's rule for overall incidence
+overall_rates <- final_summed_df_hiv$overall_incidence_rate
+overall_rates <- overall_rates[!is.na(overall_rates)]
+M <- length(overall_rates)
+mean_incidence_rate <- mean(overall_rates)
+
+# standard error for each imputation
+infections <- final_summed_df_hiv$hiv_test_rslt
+person_years <- final_summed_df_hiv$person_years
+se_vector <- sqrt(infections) / person_years * 100
+
+within_var <- mean(se_vector^2, na.rm = TRUE)
+between_var <- var(overall_rates, na.rm = TRUE)
+total_var <- within_var + (1 + 1/M) * between_var
+se_total <- sqrt(total_var)
+lower_bound_overall <- mean_incidence_rate - 1.96 * se_total
+upper_bound_overall <- mean_incidence_rate + 1.96 * se_total
+
+# means for infections and person-years
+overall_mean_infections_hiv <- mean(infections, na.rm = TRUE)
+overall_mean_person_years_hiv <- mean(person_years, na.rm = TRUE)
+
+# row for overall incidence
+overall_row <- data.frame(
+  Interval = "Overall",
+  Incidence_rate = mean_incidence_rate,
+  Lower_bound = lower_bound_overall,
+  Upper_bound = upper_bound_overall,
+  Mean_hiv_infections = overall_mean_infections_hiv,
+  Mean_person_years = overall_mean_person_years_hiv
+)
+
+# combine with dataframe
+results_df_two_yearly_rubin_hiv <- rbind(overall_row, results_df_two_yearly_rubin_hiv)
+
+# negative incidence rates or bounds to 0.001
+results_df_two_yearly_rubin_hiv <- results_df_two_yearly_rubin_hiv %>%
+  mutate(
+    Incidence_rate = ifelse(Incidence_rate < 0, 0.001, Incidence_rate),
+    Lower_bound = ifelse(Lower_bound < 0, 0.001, Lower_bound),
+    Upper_bound = ifelse(Upper_bound < 0, 0.001, Upper_bound)
+  )
+
 # save two-year interval results
 write.csv(results_df_two_yearly_rubin_hiv, "results_df_two_yearly_rubin_hiv.csv", row.names = FALSE)
+
+## rate ratios for trends in HIV incidence
+
+# load two-yearly interval data
+results_df_two_yearly_rubin_hiv <- read.csv("results_df_two_yearly_rubin_hiv.csv", stringsAsFactors = FALSE)
+View(results_df_two_yearly_rubin_hiv)
+
+# convert to numeric
+results_df_two_yearly_rubin_hiv$Mean_hiv_infections <- as.numeric(results_df_two_yearly_rubin_hiv$Mean_hiv_infections)
+results_df_two_yearly_rubin_hiv$Mean_person_years <- as.numeric(results_df_two_yearly_rubin_hiv$Mean_person_years)
+
+# Set 2013–2014 as reference
+ref_idx <- which(results_df_two_yearly_rubin_hiv$Interval == "2013-2014")
+ref_cases <- cases[ref_idx]
+ref_py <- py[ref_idx]
+
+# rate ratio function using Poisson approximation
+calculate_rr <- function(c1, py1, c2, py2) {
+  if (c1 == 0 || py1 == 0 || c2 == 0 || py2 == 0) {
+    return(c(NA, NA, NA))
+  }
+  rr <- (c1 / py1) / (c2 / py2)
+  se_log_rr <- sqrt(1 / c1 + 1 / c2)
+  lower <- exp(log(rr) - 1.96 * se_log_rr)
+  upper <- exp(log(rr) + 1.96 * se_log_rr)
+  c(rr, lower, upper)
+}
+
+# results df
+rr_exact <- data.frame(
+  Interval = results_df_two_yearly_rubin_hiv$Interval,
+  Rate_Ratio = NA,
+  Lower_95CI = NA,
+  Upper_95CI = NA
+)
+
+# rate ratios
+for (i in seq_along(cases)) {
+  if (i == ref_idx) {
+    rr_exact[i, 2:4] <- c(1, 1, 1)
+  } else {
+    rr_exact[i, 2:4] <- calculate_rr(cases[i], py[i], ref_cases, ref_py)
+  }
+}
+
+# combine results
+results_df_two_yearly_rubin_hiv <- cbind(results_df_two_yearly_rubin_hiv, rr_exact[, -1])
+
+# save rate ratios
+write.csv(results_df_two_yearly_rubin_hiv, "results_df_two_yearly_rubin_hiv_rr.csv", row.names = FALSE)
+
+# load two-year interval results
+results_df_two_yearly_rubin_hiv <- read.csv("results_df_two_yearly_rubin_hiv.csv", stringsAsFactors = FALSE)
 
 # hiv incidence over time
 hiv_incidence_plot_rubin <- ggplot(results_df_two_yearly_rubin_hiv, aes(x = Interval, y = Incidence_rate)) +
@@ -499,4 +595,5 @@ hiv_incidence_plot_rubin <- ggplot(results_df_two_yearly_rubin_hiv, aes(x = Inte
     plot.background = element_rect(fill = "white", color = NA)
   )
 
-ggsave("plots/hiv_incidence_plot_rubin.png", plot = hiv_incidence_plot_rubin, width = 8, height = 6, dpi = 300)
+ggsave("plots/hiv_incidence_plot_rubin.png", plot = hiv_incidence_plot_rubin, width = 10, height = 6, dpi = 300)
+
