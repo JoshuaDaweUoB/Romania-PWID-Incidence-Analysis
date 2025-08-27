@@ -1,5 +1,5 @@
 ## load packages
-pacman::p_load(dplyr, tidyr, withr, lubridate, MASS, writexl, readxl, arsenal, survival, broom, ggplot2, purrr)
+pacman::p_load(dplyr, tidyr, withr, lubridate, MASS, writexl, readxl, arsenal, survival, broom, ggplot2, purrr, tableone)
 
 ## set wd
 setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/Romania PWID/data")
@@ -7,10 +7,143 @@ setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/
 ## load data
 romania_pwid_raw <- read_excel("ARAS DATA IDU 2013-2022.xlsx")
 
+## exposure data
+
+# recode gender 
+romania_pwid_hcv <- romania_pwid_raw %>%
+  mutate(
+    gender = case_when(
+      gender == 2 ~ 0,
+      TRUE ~ gender
+    ),
+    gender = factor(gender, levels = c(0, 1), labels = c("Female", "Male"))
+  )
+  
+# age four categories
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  mutate(
+    dob = as.Date(dob, format = "%d/%m/%Y"),
+    age = as.numeric(difftime(Sys.Date(), dob, units = "days")) / 365.25,
+    age_4cat = cut(
+      age,
+      breaks = c(-Inf, 30, 40, 50, Inf),
+      labels = c("<30", "30-39", "40-49", "50+"),
+      right = FALSE
+    )
+  )
+# age two categories
+  romania_pwid_hcv <- romania_pwid_hcv %>%
+  mutate(age_2cat = case_when(
+    age < 40 ~ "<40",
+    age >= 40 ~ "40+"
+  ))
+
+# find max value of exposure vars
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  group_by(id) %>%
+  mutate(
+    sex_work_ever = ifelse(any(sex_work_current == 1, na.rm = TRUE), 1, sex_work_current),
+    msm_ever = ifelse(any(msm_current == 1, na.rm = TRUE), 1, msm_current),
+    homeless_ever = ifelse(any(homeless_current == 1, na.rm = TRUE), 1, homeless_current),
+    ethnic_roma_ever = ifelse(any(ethnic_roma == 1, na.rm = TRUE), 1, ethnic_roma),
+    hiv_ever = ifelse(any(hiv == 1, na.rm = TRUE), 1, hiv)
+  ) %>%
+  ungroup()
+
+# select and order vars
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  dplyr::select(
+    id,
+    sex_work_current, sex_work_ever,
+    msm_current, msm_ever,
+    homeless_current, homeless_ever,
+    ethnic_roma, ethnic_roma_ever,
+    hiv, hiv_ever,
+    everything()
+  )
+
+# replace NAs with 0s
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  mutate(across(ends_with("_ever"), ~replace_na(., 0)))
+
+# convert to factors
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  mutate(across(ends_with("_ever"), as.factor))
+
+# 12 months vars
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  mutate(
+    appointment_dte = as.Date(appointment_dte),
+    homeless_current = ifelse(is.na(homeless_current), 0, as.numeric(homeless_current)),
+    sex_work_current = ifelse(is.na(sex_work_current), 0, as.numeric(sex_work_current)),
+    msm_current = ifelse(is.na(msm_current), 0, as.numeric(msm_current))
+  ) %>%
+  group_by(id) %>%
+  arrange(appointment_dte) %>%
+  mutate(
+    homeless_12m = ifelse(
+      !is.na(hcv_test_rslt),
+      sapply(appointment_dte, function(test_date) {
+        any(
+          appointment_dte >= (test_date - days(365)) &
+          appointment_dte <= test_date &
+          homeless_current == 1
+        )
+      }) %>% as.integer(),
+      0L
+    ),
+    sex_work_12m = ifelse(
+      !is.na(hcv_test_rslt),
+      sapply(appointment_dte, function(test_date) {
+        any(
+          appointment_dte >= (test_date - days(365)) &
+          appointment_dte <= test_date &
+          sex_work_current == 1
+        )
+      }) %>% as.integer(),
+      0L
+    ),
+    msm_12m = ifelse(
+      !is.na(hcv_test_rslt),
+      sapply(appointment_dte, function(test_date) {
+        any(
+          appointment_dte >= (test_date - days(365)) &
+          appointment_dte <= test_date &
+          msm_current == 1
+        )
+      }) %>% as.integer(),
+      0L
+    )
+  ) %>%
+  ungroup()
+
+# tidy up exposures
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  mutate(homeless_12m = if_else(homeless_current == 1, 1L, homeless_12m))
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  mutate(sex_work_12m = if_else(sex_work_current == 1, 1L, sex_work_12m))
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  mutate(msm_12m = if_else(msm_current == 1, 1L, msm_12m))
+
+romania_pwid_hcv$homeless_12m <- as.factor(romania_pwid_hcv$homeless_12m)
+romania_pwid_hcv$homeless_current <- as.factor(romania_pwid_hcv$homeless_current)
+romania_pwid_hcv$sex_work_12m <- as.factor(romania_pwid_hcv$sex_work_12m)
+romania_pwid_hcv$sex_work_current <- as.factor(romania_pwid_hcv$sex_work_current)
+romania_pwid_hcv$msm_12m <- as.factor(romania_pwid_hcv$msm_12m)
+romania_pwid_hcv$msm_current <- as.factor(romania_pwid_hcv$msm_current)
+
+# table of exposures
+current_vars <- c("homeless_12m", "homeless_current", "homeless_ever", "sex_work_12m", "sex_work_current", "sex_work_ever", "msm_12m", "msm_current", "msm_ever")
+current_table <- CreateTableOne(
+  vars = current_vars,
+  data = romania_pwid_hcv
+)
+print(current_table, showAllLevels = TRUE)
+
 ## baseline HCV cohort
 
 # remove rows where hcv test result is missing
-romania_pwid_hcv <- romania_pwid_raw[!is.na(romania_pwid_raw$hcv_test_rslt), ]
+romania_pwid_hcv <- romania_pwid_hcv[!is.na(romania_pwid_hcv$hcv_test_rslt), ]
 
 # remove rows where hcv test result is indeterminate
 romania_pwid_hcv <- romania_pwid_hcv %>%
@@ -139,7 +272,9 @@ romania_pwid_hcv <- romania_pwid_hcv %>%
 
 # create intervals
 romania_pwid_hcv_test <- romania_pwid_hcv %>%
-  mutate(appointment_dte = as.Date(appointment_dte, format = "%Y-%m-%d")) %>%
+  mutate(
+    appointment_dte = as.Date(appointment_dte, format = "%Y-%m-%d")
+  ) %>%
   arrange(id, appointment_dte) %>%
   group_by(id) %>%
   mutate(
@@ -154,7 +289,10 @@ romania_pwid_hcv_test <- romania_pwid_hcv %>%
     days_risk = as.numeric(appointment_dte_end - appointment_dte_start),
     py = days_risk / 365.25
   ) %>%
-  dplyr::select(id, appointment_dte_start, appointment_dte_end, hcv_test_rslt_start, hcv_test_rslt_end, days_risk, py) %>%
+  dplyr::select(
+    id, appointment_dte_start, appointment_dte_end, hcv_test_rslt_start, hcv_test_rslt_end,
+    days_risk, py, sex_work_12m, sex_work_ever, msm_12m, msm_ever, homeless_12m, homeless_ever, ethnic_roma_ever, hiv_ever, gender, age_4cat, age_2cat
+  ) %>%
   rename(
     appointment_dte = appointment_dte_start,
     appointment_dte_lag = appointment_dte_end,
@@ -189,6 +327,14 @@ romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
     appointment_dte_lag = as.Date(appointment_dte_lag)
   )
 
+# List of _ever variables (excluding hiv_ever as it's the stratification variable)
+exposure_vars <- c("sex_work_12", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever", "gender", "age_4cat")
+
+# Create TableOne summary stratified by hiv_ever
+exposure_vars <- CreateTableOne(vars = exposure_vars, data = romania_pwid_hcv_test)
+
+print(exposure_vars)
+
 # check that dates are correctly lagged
 View(romania_pwid_hcv_test)
 
@@ -215,6 +361,23 @@ upper <- (qchisq(0.975, 2 * (cases + 1)) / 2) / person_time * 100
 
 cat("HCV Incidence Rate:", round(ir, 2), "per 100 PY (95% CI:", round(lower, 2), "-", round(upper, 2), 
     "| Cases:", cases, "| Person-years:", round(person_time, 2), ")\n")
+
+# models for lifetime exposures
+exposure_vars <- c("sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever", "gender", "age_4cat", "age_2cat")
+
+for (var in exposure_vars) {
+  formula <- as.formula(paste("hcv_test_rslt ~", var))
+  cat("\nPoisson regression for", var, "\n")
+  model <- glm(formula, data = romania_pwid_hcv_test, family = poisson())
+  coef_table <- coef(summary(model))
+  rr <- exp(coef(model))
+  ci <- exp(confint(model))
+  cat("Rate Ratios (RR) and 95% Confidence Intervals:\n")
+  for (i in 1:length(rr)) {
+    cat(names(rr)[i], ": RR =", round(rr[i], 2),
+        " (95% CI:", round(ci[i, 1], 2), "-", round(ci[i, 2], 2), ")\n")
+  }
+}
 
 ## random-point sampling with 10000 iterations approach
 
