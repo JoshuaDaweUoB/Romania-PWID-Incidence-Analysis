@@ -4,26 +4,48 @@ pacman::p_load(dplyr, tidyr, withr, lubridate, MASS, writexl, readxl, arsenal, s
 ## set wd
 setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/Romania PWID/data")
 
-## load data
-romania_pwid_raw <- read_excel("ARAS DATA IDU 2013-2022.xlsx")
-romania_pwid_treatment <- read_excel("FZC CDI 2013_2022_in tratament.xlsx")
+## oat treatment data
 
-## exposure data
+# load
+romania_pwid_treatment <- read_excel("FZC CDI 2013_2022_in tratament.xlsx")
 
 # rename date column
 romania_pwid_treatment <- romania_pwid_treatment %>%
   rename(appointment_dte = Data_A) %>%
   rename(id = "COD ALT")
 
+# make date column date format
+romania_pwid_treatment <- romania_pwid_treatment %>%
+  mutate(appointment_dte = as.Date(appointment_dte))
+
 # delete redunant column and add oat column
 romania_pwid_treatment <- romania_pwid_treatment %>%
   select(appointment_dte, id) %>%
   mutate(oat = 1)
 
+# first recorded oat 
+romania_pwid_treatment <- romania_pwid_treatment %>%
+  mutate(appointment_dte = as.Date(appointment_dte)) %>%
+  group_by(id) %>%
+  mutate(
+    oat_seq = cumsum(ifelse(oat == 1, 1, 0)),
+    oat_first_dte = min(appointment_dte[oat == 1], na.rm = TRUE)
+  ) %>%
+  ungroup()
+
+## exposure data
+
+## load data
+romania_pwid_raw <- read_excel("ARAS DATA IDU 2013-2022.xlsx")
+
 # append treatment df to raw dataframe
 missing_cols <- setdiff(names(romania_pwid_raw), names(romania_pwid_treatment))
 romania_pwid_treatment[missing_cols] <- NA
 romania_pwid_raw <- bind_rows(romania_pwid_raw, romania_pwid_treatment)
+
+# save combined data
+romania_pwid_hiv_combined <- romania_pwid_raw[!is.na(romania_pwid_raw$hiv_test_rslt) | !is.na(romania_pwid_raw$oat), ]
+write.csv(romania_pwid_hiv_combined, "romania_pwid_hiv_combined.csv")
 
 # recode gender 
 romania_pwid_hiv <- romania_pwid_raw %>%
@@ -54,6 +76,7 @@ romania_pwid_hiv <- romania_pwid_hiv %>%
     age >= 40 ~ "40+"
   ))
 
+# replace exposures that happened before 
 
 # find max value of exposure vars
 romania_pwid_hiv <- romania_pwid_hiv %>%
@@ -88,6 +111,88 @@ romania_pwid_hiv <- romania_pwid_hiv %>%
 # convert to factors
 romania_pwid_hiv <- romania_pwid_hiv %>%
   mutate(across(ends_with("_ever"), as.factor))
+
+str(romania_pwid_hiv$hiv_test_rslt)
+
+# sequence negative tests
+# Step 0: create a temporary row ID
+romania_pwid_hiv <- romania_pwid_hiv %>%
+  mutate(row_id = row_number())
+
+# Step 1: subset negative tests and sequence them
+neg_tests <- romania_pwid_hiv %>%
+  filter(hiv_test_rslt == 1) %>%
+  arrange(id, appointment_dte) %>%
+  group_by(id) %>%
+  mutate(neg_hiv_seq = row_number()) %>%
+  ungroup() %>%
+  select(row_id, neg_hiv_seq)  # keep only row_id and sequence
+
+# Step 2: merge back using row_id
+romania_pwid_hiv <- romania_pwid_hiv %>%
+  left_join(neg_tests, by = "row_id")
+
+# ensure hiv_test_rslt is numeric
+romania_pwid_hiv <- romania_pwid_hiv %>%
+  mutate(hiv_test_rslt = as.numeric(hiv_test_rslt))
+
+# create variable called first_hiv_neg_test_dte
+# find first negative date for each id
+first_neg_dates <- romania_pwid_hiv %>%
+  filter(neg_hiv_seq == 1) %>%
+  group_by(id) %>%
+  summarise(first_hiv_neg_test_dte = min(appointment_dte, na.rm = TRUE), .groups = "drop")
+
+
+100402644RMAIH1078M
+
+View(first_neg_dates)
+View(romania_pwid_hiv)
+# join back to all rows
+romania_pwid_hiv <- romania_pwid_hiv %>%
+  left_join(first_neg_dates, by = "id") %>%
+  mutate(
+    before_first_neg = if_else(
+      !is.na(first_hiv_neg_test_dte) & appointment_dte < first_hiv_neg_test_dte,
+      1L, 0L
+    )
+  )
+
+
+romania_pwid_hiv <- romania_pwid_hiv %>%
+  mutate(
+    before_first_neg = if_else(
+      !is.na(first_hiv_neg_test_dte) & appointment_dte < first_hiv_neg_test_dte,
+      1L, 0L
+    )
+  )
+
+romania_pwid_hiv %>%
+  count(before_first_neg)
+
+romania_pwid_hiv %>%
+  count(before_first_neg) %>%
+  mutate(pct = n / sum(n) * 100)
+
+
+
+
+# replace oat_ever with NA if oat equals 1 and appointment_dte is less than first_hiv_neg_test_dte
+romania_pwid_hiv <- romania_pwid_hiv %>%
+  mutate(oat_flag = ifelse(as.numeric(as.character(oat)) == 1 & appointment_dte < first_hiv_neg_test_dte, 1, NA))
+
+
+
+table_oat_flag <- CreateTableOne(vars = "oat_flag", data = romania_pwid_hiv)
+print(table_oat_flag, showAllLevels = TRUE)
+
+romania_pwid_hiv$oat_ever <- as.character(romania_pwid_hiv$oat_ever)
+romania_pwid_hiv$oat_ever <- ifelse(romania_pwid_hiv$oat_ever == "1" & romania_pwid_hiv$appointment_dte < romania_pwid_hiv$first_hiv_test_dte, NA, romania_pwid_hiv$oat_ever)
+romania_pwid_hiv$oat_ever <- as.factor(romania_pwid_hiv$oat_ever)
+
+table_oat_ever <- CreateTableOne(vars = "oat_ever", data = romania_pwid_hiv)
+print(table_oat_ever, showAllLevels = TRUE)
+View(romania_pwid_hiv)
 
 # 12 months vars
 romania_pwid_hiv <- romania_pwid_hiv %>%
@@ -184,6 +289,12 @@ romania_pwid_hiv <- romania_pwid_hiv[!is.na(romania_pwid_hiv$hiv_test_rslt), ]
 romania_pwid_hiv <- romania_pwid_hiv %>%
   filter(!hiv_test_rslt == 3)
 
+# sequence hiv tests by id
+romania_pwid_hiv <- romania_pwid_hiv %>%
+  group_by(id) %>%
+  arrange(id, appointment_dte) %>%
+  mutate(hiv_test_seq = row_number())
+
 # sequence by id 
 romania_pwid_hiv <- romania_pwid_hiv %>%
   arrange(id) %>%
@@ -230,16 +341,6 @@ print(highest_id_seq)
 # hiv test results by visit
 romania_pwid_hiv_summary <- table(romania_pwid_hiv$appointment_seq, romania_pwid_hiv$hiv_test_rslt)
 print(romania_pwid_hiv_summary) 
-
-# sequence hiv tests by id
-romania_pwid_hiv <- romania_pwid_hiv %>%
-  group_by(id) %>%
-  arrange(id) %>%
-  mutate(hiv_test_seq = row_number())
-
-# hiv test results by test number
-romania_pwid_hiv_summary <- table(romania_pwid_hiv$hiv_test_seq, romania_pwid_hiv$hiv_test_rslt)
-print(romania_pwid_hiv_summary)
 
 # remove participants with only one test
 romania_pwid_hiv <- romania_pwid_hiv %>%
