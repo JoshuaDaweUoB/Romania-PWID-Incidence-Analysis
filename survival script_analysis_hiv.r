@@ -230,12 +230,12 @@ setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/
 romania_pwid_hiv_test <- read.csv("romania_pwid_hiv_test.csv", stringsAsFactors = FALSE)
 
 # exposures
-exposure_vars <- c("sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever", "gender", "age_2cat")
+exposure_vars <- c("oat_12m", "oat_ever", "sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever", "gender", "age_2cat")
 
 results_list <- list()
 
 # Relevel binary variables to factors with "No"/"Yes"
-binary_vars <- c("sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever")
+binary_vars <- c("oat_12m", "oat_ever", "sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever")
 for (var in binary_vars) {
   romania_pwid_hiv_test[[var]] <- factor(ifelse(romania_pwid_hiv_test[[var]] == 1, "Yes", "No"), levels = c("No", "Yes"))
 }
@@ -286,7 +286,7 @@ for (var in exposure_vars) {
 }
 
 results_df <- do.call(rbind, results_list)
-write_xlsx(results_df, "cox_model_results.xlsx")
+write_xlsx(results_df, "cox_model_results_hiv.xlsx")
 
 # stratified by sex
 romania_pwid_hiv_test_male <- romania_pwid_hiv_test[romania_pwid_hiv_test$gender == "Male", ]
@@ -342,7 +342,7 @@ run_cox_analysis <- function(data, gender_label) {
 results_male <- run_cox_analysis(romania_pwid_hiv_test_male, "Male")
 results_female <- run_cox_analysis(romania_pwid_hiv_test_female, "Female")
 results_df_gender <- rbind(results_male, results_female)
-write_xlsx(results_df_gender, "cox_model_results_by_gender.xlsx")
+write_xlsx(results_df_gender, "cox_model_results_hiv_by_gender.xlsx")
 
 
 

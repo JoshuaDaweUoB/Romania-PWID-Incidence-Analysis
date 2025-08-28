@@ -6,8 +6,24 @@ setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/
 
 ## load data
 romania_pwid_raw <- read_excel("ARAS DATA IDU 2013-2022.xlsx")
+romania_pwid_treatment <- read_excel("FZC CDI 2013_2022_in tratament.xlsx")
 
 ## exposure data
+
+# rename date column
+romania_pwid_treatment <- romania_pwid_treatment %>%
+  rename(appointment_dte = Data_A) %>%
+  rename(id = "COD ALT")
+
+# delete redunant column and add oat column
+romania_pwid_treatment <- romania_pwid_treatment %>%
+  select(appointment_dte, id) %>%
+  mutate(oat = 1)
+
+# append treatment df to raw dataframe
+missing_cols <- setdiff(names(romania_pwid_raw), names(romania_pwid_treatment))
+romania_pwid_treatment[missing_cols] <- NA
+romania_pwid_raw <- bind_rows(romania_pwid_raw, romania_pwid_treatment)
 
 # recode gender 
 romania_pwid_hiv <- romania_pwid_raw %>%
@@ -38,10 +54,12 @@ romania_pwid_hiv <- romania_pwid_hiv %>%
     age >= 40 ~ "40+"
   ))
 
+
 # find max value of exposure vars
 romania_pwid_hiv <- romania_pwid_hiv %>%
   group_by(id) %>%
   mutate(
+    oat_ever = ifelse(any(oat == 1, na.rm = TRUE), 1, oat),
     sex_work_ever = ifelse(any(sex_work_current == 1, na.rm = TRUE), 1, sex_work_current),
     msm_ever = ifelse(any(msm_current == 1, na.rm = TRUE), 1, msm_current),
     homeless_ever = ifelse(any(homeless_current == 1, na.rm = TRUE), 1, homeless_current),
@@ -54,6 +72,7 @@ romania_pwid_hiv <- romania_pwid_hiv %>%
 romania_pwid_hiv <- romania_pwid_hiv %>%
   dplyr::select(
     id,
+    oat, oat_ever,
     sex_work_current, sex_work_ever,
     msm_current, msm_ever,
     homeless_current, homeless_ever,
@@ -76,13 +95,14 @@ romania_pwid_hiv <- romania_pwid_hiv %>%
     appointment_dte = as.Date(appointment_dte),
     homeless_current = ifelse(is.na(homeless_current), 0, as.numeric(homeless_current)),
     sex_work_current = ifelse(is.na(sex_work_current), 0, as.numeric(sex_work_current)),
-    msm_current = ifelse(is.na(msm_current), 0, as.numeric(msm_current))
+    msm_current = ifelse(is.na(msm_current), 0, as.numeric(msm_current)),
+    oat = ifelse(is.na(oat), 0, as.numeric(oat))
   ) %>%
   group_by(id) %>%
   arrange(appointment_dte) %>%
   mutate(
     homeless_12m = ifelse(
-      !is.na(hiv_test_rslt),
+      !is.na(hcv_test_rslt),
       sapply(appointment_dte, function(test_date) {
         any(
           appointment_dte >= (test_date - days(365)) &
@@ -93,7 +113,7 @@ romania_pwid_hiv <- romania_pwid_hiv %>%
       0L
     ),
     sex_work_12m = ifelse(
-      !is.na(hiv_test_rslt),
+      !is.na(hcv_test_rslt),
       sapply(appointment_dte, function(test_date) {
         any(
           appointment_dte >= (test_date - days(365)) &
@@ -104,7 +124,7 @@ romania_pwid_hiv <- romania_pwid_hiv %>%
       0L
     ),
     msm_12m = ifelse(
-      !is.na(hiv_test_rslt),
+      !is.na(hcv_test_rslt),
       sapply(appointment_dte, function(test_date) {
         any(
           appointment_dte >= (test_date - days(365)) &
@@ -113,9 +133,21 @@ romania_pwid_hiv <- romania_pwid_hiv %>%
         )
       }) %>% as.integer(),
       0L
+    ),
+    oat_12m = ifelse(
+      !is.na(hcv_test_rslt),
+      sapply(appointment_dte, function(test_date) {
+        any(
+          appointment_dte >= (test_date - days(365)) &
+          appointment_dte <= test_date &
+          oat == 1
+        )
+      }) %>% as.integer(),
+      0L
     )
   ) %>%
   ungroup()
+
 
 # tidy up exposures
 romania_pwid_hiv <- romania_pwid_hiv %>%
@@ -124,6 +156,8 @@ romania_pwid_hiv <- romania_pwid_hiv %>%
   mutate(sex_work_12m = if_else(sex_work_current == 1, 1L, sex_work_12m))
 romania_pwid_hiv <- romania_pwid_hiv %>%
   mutate(msm_12m = if_else(msm_current == 1, 1L, msm_12m))
+romania_pwid_hiv <- romania_pwid_hiv %>%
+  mutate(oat_12m = if_else(oat == 1, 1L, oat_12m))
 
 romania_pwid_hiv$homeless_12m <- as.factor(romania_pwid_hiv$homeless_12m)
 romania_pwid_hiv$homeless_current <- as.factor(romania_pwid_hiv$homeless_current)
@@ -131,9 +165,10 @@ romania_pwid_hiv$sex_work_12m <- as.factor(romania_pwid_hiv$sex_work_12m)
 romania_pwid_hiv$sex_work_current <- as.factor(romania_pwid_hiv$sex_work_current)
 romania_pwid_hiv$msm_12m <- as.factor(romania_pwid_hiv$msm_12m)
 romania_pwid_hiv$msm_current <- as.factor(romania_pwid_hiv$msm_current)
+romania_pwid_hiv$oat_12m <- as.factor(romania_pwid_hiv$oat_12m)
 
 # table of exposures
-current_vars <- c("homeless_12m", "homeless_current", "homeless_ever", "sex_work_12m", "sex_work_current", "sex_work_ever", "msm_12m", "msm_current", "msm_ever")
+current_vars <- c("oat_12m", "oat_ever", "homeless_12m", "homeless_current", "homeless_ever", "sex_work_12m", "sex_work_current", "sex_work_ever", "msm_12m", "msm_current", "msm_ever")
 current_table <- CreateTableOne(
   vars = current_vars,
   data = romania_pwid_hiv
@@ -288,7 +323,7 @@ romania_pwid_hiv_test <- romania_pwid_hiv %>%
   ) %>%
   dplyr::select(
     id, appointment_dte_start, appointment_dte_end, hiv_test_rslt_start, hiv_test_rslt_end,
-    days_risk, py, sex_work_12m, sex_work_ever, msm_12m, msm_ever, homeless_12m, homeless_ever, ethnic_roma_ever, hiv_ever, gender, age_4cat, age_2cat
+    days_risk, py, oat_12m, oat_ever, sex_work_12m, sex_work_ever, msm_12m, msm_ever, homeless_12m, homeless_ever, ethnic_roma_ever, hiv_ever, gender, age_4cat, age_2cat
   ) %>%
   rename(
     appointment_dte = appointment_dte_start,
@@ -324,8 +359,8 @@ romania_pwid_hiv_test <- romania_pwid_hiv_test %>%
     appointment_dte_lag = as.Date(appointment_dte_lag)
   )
 
-# List of _ever variables (excluding hiv_ever as it's the stratification variable)
-exposure_vars <- c("sex_work_12", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever", "gender")
+# List of exposure variables
+exposure_vars <- c("oat_12m", "oat_ever", "sex_work_12", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever", "gender")
 
 # Create TableOne summary stratified by hiv_ever
 exposure_vars <- CreateTableOne(vars = exposure_vars, data = romania_pwid_hiv_test)

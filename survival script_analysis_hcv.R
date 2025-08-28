@@ -51,6 +51,7 @@ baseline_analysis_hcv <- baseline_analysis_hcv %>%
     gender = ifelse(gender == 2, 0, gender) 
   )
 View(baseline_analysis_hcv)
+
 # # ensure dob is in the correct Date format
 # baseline_analysis_hcv <- baseline_analysis_hcv %>%
 #   mutate(dob = as.Date(dob, format = "%d/%m/%Y")) %>%
@@ -230,12 +231,12 @@ View(baseline_analysis_hcv)
 romania_pwid_hcv_test <- read.csv("romania_pwid_hcv_test.csv", stringsAsFactors = FALSE)
 
 # exposures
-exposure_vars <- c("sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever", "gender", "age_4cat")
+exposure_vars <- c("oat_12m", "oat_ever", "sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever", "gender", "age_4cat")
 
 results_list <- list()
 
 # Relevel binary variables to factors with "No"/"Yes"
-binary_vars <- c("sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever")
+binary_vars <- c("oat_12m", "oat_ever", "sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever")
 for (var in binary_vars) {
   romania_pwid_hcv_test[[var]] <- factor(ifelse(romania_pwid_hcv_test[[var]] == 1, "Yes", "No"), levels = c("No", "Yes"))
 }
