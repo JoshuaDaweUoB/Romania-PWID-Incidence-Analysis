@@ -256,9 +256,6 @@ romania_pwid_hiv <- romania_pwid_hiv %>%
 romania_pwid_hiv_summary <- table(romania_pwid_hiv$hiv_test_seq, romania_pwid_hiv$hiv_test_rslt)
 print(romania_pwid_hiv_summary)
 
-# create hiv testing dataframe
-romania_pwid_hiv_test <- subset(romania_pwid_hiv, select = c(id, appointment_dte, hiv_test_seq, hiv_test_rslt)) 
-
 # appointment_dte is a date
 romania_pwid_hiv <- romania_pwid_hiv %>%
   mutate(appointment_dte = as.Date(appointment_dte, format = "%Y-%m-%d"))
@@ -361,24 +358,6 @@ upper <- (qchisq(0.975, 2 * (cases + 1)) / 2) / person_time * 100
 
 cat("hiv Incidence Rate:", round(ir, 2), "per 100 PY (95% CI:", round(lower, 2), "-", round(upper, 2), 
     "| Cases:", cases, "| Person-years:", round(person_time, 2), ")\n")
-
-# models for lifetime exposures
-exposure_vars <- c("sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever", "gender", "age_2cat")
-
-for (var in exposure_vars) {
-  formula <- as.formula(paste("hiv_test_rslt ~", var))
-  cat("\nPoisson regression for", var, "\n")
-  model <- glm(formula, data = romania_pwid_hiv_test, family = poisson())
-  coef_table <- coef(summary(model))
-  rr <- exp(coef(model))
-  ci <- exp(confint(model))
-  cat("Rate Ratios (RR) and 95% Confidence Intervals:\n")
-  for (i in 1:length(rr)) {
-    cat(names(rr)[i], ": RR =", round(rr[i], 2),
-        " (95% CI:", round(ci[i, 1], 2), "-", round(ci[i, 2], 2), ")\n")
-  }
-}
-
 
 ## random-point sampling with 10000 iterations approach
 

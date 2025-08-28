@@ -224,6 +224,133 @@ setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/
 # print(summary_table)
 # write.csv(summary_table, "hiv_test_seq_bin_summary_table.csv", row.names = FALSE)
 
+## cox risk factor analysis
+
+# load data
+romania_pwid_hiv_test <- read.csv("romania_pwid_hiv_test.csv", stringsAsFactors = FALSE)
+
+# exposures
+exposure_vars <- c("sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever", "gender", "age_2cat")
+
+results_list <- list()
+
+# Relevel binary variables to factors with "No"/"Yes"
+binary_vars <- c("sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever")
+for (var in binary_vars) {
+  romania_pwid_hiv_test[[var]] <- factor(ifelse(romania_pwid_hiv_test[[var]] == 1, "Yes", "No"), levels = c("No", "Yes"))
+}
+
+for (var in exposure_vars) {
+  # If variable is a factor, get levels; otherwise, use unique values
+  levels_var <- if (is.factor(romania_pwid_hiv_test[[var]])) {
+    levels(romania_pwid_hiv_test[[var]])
+  } else {
+    unique(romania_pwid_hiv_test[[var]])
+  }
+  
+  for (lev in levels_var) {
+    subset_data <- romania_pwid_hiv_test[romania_pwid_hiv_test[[var]] == lev & !is.na(romania_pwid_hiv_test[[var]]), ]
+    cases <- sum(subset_data$hiv_test_rslt == 1, na.rm = TRUE)
+    person_years <- sum(subset_data$py, na.rm = TRUE)
+    
+    # Fit Cox model for the variable (overall, not per level)
+    formula <- as.formula(paste("Surv(py, hiv_test_rslt) ~", var))
+    model <- coxph(formula, data = romania_pwid_hiv_test)
+    hr <- exp(coef(model))
+    ci <- exp(confint(model))
+    
+    # Only add HR/CI for the current level if it matches the coefficient name
+    if (paste0(var, lev) %in% names(hr)) {
+      results_list[[length(results_list) + 1]] <- data.frame(
+        Variable = var,
+        Level = lev,
+        HR = hr[paste0(var, lev)],
+        CI_lower = ci[paste0(var, lev), 1],
+        CI_upper = ci[paste0(var, lev), 2],
+        Cases = cases,
+        Person_Years = person_years
+      )
+    } else {
+      # For reference level (usually not shown in HR output)
+      results_list[[length(results_list) + 1]] <- data.frame(
+        Variable = var,
+        Level = lev,
+        HR = NA,
+        CI_lower = NA,
+        CI_upper = NA,
+        Cases = cases,
+        Person_Years = person_years
+      )
+    }
+  }
+}
+
+results_df <- do.call(rbind, results_list)
+write_xlsx(results_df, "cox_model_results.xlsx")
+
+# stratified by sex
+romania_pwid_hiv_test_male <- romania_pwid_hiv_test[romania_pwid_hiv_test$gender == "Male", ]
+romania_pwid_hiv_test_female <- romania_pwid_hiv_test[romania_pwid_hiv_test$gender == "Female", ]
+exposure_vars_strat <- setdiff(exposure_vars, "gender")
+
+# Function to run your analysis loop, using exposure_vars_strat
+run_cox_analysis <- function(data, gender_label) {
+  results_list <- list()
+  for (var in exposure_vars_strat) {  # Use exposure_vars_strat here!
+    levels_var <- if (is.factor(data[[var]])) {
+      levels(data[[var]])
+    } else {
+      unique(data[[var]])
+    }
+    for (lev in levels_var) {
+      subset_data <- data[data[[var]] == lev & !is.na(data[[var]]), ]
+      cases <- sum(subset_data$hiv_test_rslt == 1, na.rm = TRUE)
+      person_years <- sum(subset_data$py, na.rm = TRUE)
+      formula <- as.formula(paste("Surv(py, hiv_test_rslt) ~", var))
+      model <- coxph(formula, data = data)
+      hr <- exp(coef(model))
+      ci <- exp(confint(model))
+      if (paste0(var, lev) %in% names(hr)) {
+        results_list[[length(results_list) + 1]] <- data.frame(
+          Gender = gender_label,
+          Variable = var,
+          Level = lev,
+          HR = hr[paste0(var, lev)],
+          CI_lower = ci[paste0(var, lev), 1],
+          CI_upper = ci[paste0(var, lev), 2],
+          Cases = cases,
+          Person_Years = person_years
+        )
+      } else {
+        results_list[[length(results_list) + 1]] <- data.frame(
+          Gender = gender_label,
+          Variable = var,
+          Level = lev,
+          HR = NA,
+          CI_lower = NA,
+          CI_upper = NA,
+          Cases = cases,
+          Person_Years = person_years
+        )
+      }
+    }
+  }
+  do.call(rbind, results_list)
+}
+
+# Now run the analysis
+results_male <- run_cox_analysis(romania_pwid_hiv_test_male, "Male")
+results_female <- run_cox_analysis(romania_pwid_hiv_test_female, "Female")
+results_df_gender <- rbind(results_male, results_female)
+write_xlsx(results_df_gender, "cox_model_results_by_gender.xlsx")
+
+
+
+
+
+
+
+
 ## longitudinal analysis with Rubin's correction
 
 # sequence hiv_test_rslt by id and identify any IDs with multiple positive hiv_test_rslts

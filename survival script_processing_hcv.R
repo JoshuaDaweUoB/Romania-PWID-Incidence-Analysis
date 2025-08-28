@@ -178,6 +178,9 @@ positive_at_baseline_df <- romania_pwid_hcv %>%
 positive_at_baseline_df_summary <- table(positive_at_baseline_df$hcv_test_rslt)
 print(positive_at_baseline_df_summary)
 
+# save df of all participants tested for hcv
+write.csv(romania_pwid_hcv, "romania_pwid_hcv_bl.csv", row.names = FALSE)
+
 # remove ids where positive at baseline
 romania_pwid_hcv <- romania_pwid_hcv %>%
   filter(!(id %in% positive_at_baseline))
@@ -256,9 +259,6 @@ romania_pwid_hcv <- romania_pwid_hcv %>%
 romania_pwid_hcv_summary <- table(romania_pwid_hcv$hcv_test_seq, romania_pwid_hcv$hcv_test_rslt)
 print(romania_pwid_hcv_summary)
 
-# create hcv testing dataframe
-romania_pwid_hcv_test <- subset(romania_pwid_hcv, select = c(id, appointment_dte, hcv_test_seq, hcv_test_rslt)) 
-
 # appointment_dte is a date
 romania_pwid_hcv <- romania_pwid_hcv %>%
   mutate(appointment_dte = as.Date(appointment_dte, format = "%Y-%m-%d"))
@@ -315,6 +315,12 @@ romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
     )
   )
 
+current_table <- CreateTableOne(
+  vars = current_vars,
+  data = romania_pwid_hcv
+)
+print(current_table, showAllLevels = TRUE)
+
 # QA for rows where appointment_dte_lag is less than appointment_dte
 invalid_rows <- romania_pwid_hcv_test %>%
   filter(appointment_dte_lag < appointment_dte)
@@ -327,8 +333,8 @@ romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
     appointment_dte_lag = as.Date(appointment_dte_lag)
   )
 
-# List of _ever variables (excluding hiv_ever as it's the stratification variable)
-exposure_vars <- c("sex_work_12", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever", "gender", "age_4cat")
+# List of exposure variables 
+exposure_vars <- c("sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever", "gender", "age_4cat")
 
 # Create TableOne summary stratified by hiv_ever
 exposure_vars <- CreateTableOne(vars = exposure_vars, data = romania_pwid_hcv_test)

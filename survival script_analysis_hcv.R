@@ -4,53 +4,53 @@ pacman::p_load(tidyr, withr, lubridate, MASS, writexl, readxl, arsenal, survival
 ## set wd
 setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/Romania PWID/data")
 
-# ## Baseline prevalence and predictors of HCV infection
+## Baseline prevalence and predictors of HCV infection
 
-# # load data
-# baseline_analysis_hcv <- romania_pwid_raw
+# load data
+baseline_analysis_hcv <- read.csv("romania_pwid_hcv_bl.csv")
 
-# # sequence by id 
-# baseline_analysis_hcv <- baseline_analysis_hcv %>%
-#   arrange(id) %>%  # Ensure rows are sorted by id
-#   mutate(id_seq = cumsum(!duplicated(id)))  # Increment by 1 for each new id
+# sequence by id 
+baseline_analysis_hcv <- baseline_analysis_hcv %>%
+  arrange(id) %>%  # Ensure rows are sorted by id
+  mutate(id_seq = cumsum(!duplicated(id)))  # Increment by 1 for each new id
 
-# View(baseline_analysis_hcv)
+View(baseline_analysis_hcv)
 
-# # highest value in the id_seq column
-# highest_id_seq <- baseline_analysis_hcv %>%
-#   summarise(max_id_seq = max(id_seq, na.rm = TRUE))
-# cat("Highest value in id_seq:\n")
-# print(highest_id_seq)
+# highest value in the id_seq column
+highest_id_seq <- baseline_analysis_hcv %>%
+  summarise(max_id_seq = max(id_seq, na.rm = TRUE))
+cat("Highest value in id_seq:\n")
+print(highest_id_seq)
 
-# # remove rows where hcv test result is missing
-# baseline_analysis_hcv <- baseline_analysis_hcv[!is.na(baseline_analysis_hcv$hcv_test_rslt), ]
+# remove rows where hcv test result is missing
+baseline_analysis_hcv <- baseline_analysis_hcv[!is.na(baseline_analysis_hcv$hcv_test_rslt), ]
 
-# # remove rows where hcv test result is indeterminate
-# baseline_analysis_hcv <- baseline_analysis_hcv %>%
-#   filter(!hcv_test_rslt == 3)
+# remove rows where hcv test result is indeterminate
+baseline_analysis_hcv <- baseline_analysis_hcv %>%
+  filter(!hcv_test_rslt == 3)
 
-# # create sequence of visits by ID
-# baseline_analysis_hcv <- baseline_analysis_hcv %>%
-#   group_by(id) %>%
-#   arrange(id, appointment_dte) %>%
-#   mutate(appointment_seq = row_number())
+# create sequence of visits by ID
+baseline_analysis_hcv <- baseline_analysis_hcv %>%
+  group_by(id) %>%
+  arrange(id, appointment_dte) %>%
+  mutate(appointment_seq = row_number())
 
-# baseline_analysis_hcv <- ungroup(baseline_analysis_hcv)
+baseline_analysis_hcv <- ungroup(baseline_analysis_hcv)
 
-# # keep rows where appointment_seq equals 1
-# baseline_analysis_hcv <- baseline_analysis_hcv %>%
-#   filter(appointment_seq == 1)
+# keep rows where appointment_seq equals 1
+baseline_analysis_hcv <- baseline_analysis_hcv %>%
+  filter(appointment_seq == 1)
 
-# # subset romania_pwid_hcv to include only rows that match id, appointment_dte, and hcv_test_seq in romania_pwid_hcv_test
-# baseline_analysis_hcv <- baseline_analysis_hcv %>%
-#   mutate(
-#     sex_work_current = ifelse(is.na(sex_work_current), 0, sex_work_current),
-#     msm_current = ifelse(is.na(msm_current), 0, msm_current),
-#     homeless_current = ifelse(is.na(homeless_current), 0, homeless_current),
-#     ethnic_roma = ifelse(is.na(ethnic_roma), 0, ethnic_roma),
-#     gender = ifelse(gender == 2, 0, gender) 
-#   )
-
+# subset romania_pwid_hcv to include only rows that match id, appointment_dte, and hcv_test_seq in romania_pwid_hcv_test
+baseline_analysis_hcv <- baseline_analysis_hcv %>%
+  mutate(
+    sex_work_12m = ifelse(is.na(sex_work_current), 0, sex_work_current),
+    msm_12m = ifelse(is.na(msm_current), 0, msm_current),
+    homeless_12m = ifelse(is.na(homeless_current), 0, homeless_current),
+    ethnic_roma_ever = ifelse(is.na(ethnic_roma), 0, ethnic_roma),
+    gender = ifelse(gender == 2, 0, gender) 
+  )
+View(baseline_analysis_hcv)
 # # ensure dob is in the correct Date format
 # baseline_analysis_hcv <- baseline_analysis_hcv %>%
 #   mutate(dob = as.Date(dob, format = "%d/%m/%Y")) %>%
@@ -223,6 +223,134 @@ setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/
 # # print and save summary table
 # print(summary_table)
 # write.csv(summary_table, "hcv_test_seq_bin_summary_table.csv", row.names = FALSE)
+
+## cox risk factor analysis
+
+# load data
+romania_pwid_hcv_test <- read.csv("romania_pwid_hcv_test.csv", stringsAsFactors = FALSE)
+
+# exposures
+exposure_vars <- c("sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever", "gender", "age_4cat")
+
+results_list <- list()
+
+# Relevel binary variables to factors with "No"/"Yes"
+binary_vars <- c("sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever")
+for (var in binary_vars) {
+  romania_pwid_hcv_test[[var]] <- factor(ifelse(romania_pwid_hcv_test[[var]] == 1, "Yes", "No"), levels = c("No", "Yes"))
+}
+
+for (var in exposure_vars) {
+  # If variable is a factor, get levels; otherwise, use unique values
+  levels_var <- if (is.factor(romania_pwid_hcv_test[[var]])) {
+    levels(romania_pwid_hcv_test[[var]])
+  } else {
+    unique(romania_pwid_hcv_test[[var]])
+  }
+  
+  for (lev in levels_var) {
+    subset_data <- romania_pwid_hcv_test[romania_pwid_hcv_test[[var]] == lev & !is.na(romania_pwid_hcv_test[[var]]), ]
+    cases <- sum(subset_data$hcv_test_rslt == 1, na.rm = TRUE)
+    person_years <- sum(subset_data$py, na.rm = TRUE)
+    
+    # Fit Cox model for the variable (overall, not per level)
+    formula <- as.formula(paste("Surv(py, hcv_test_rslt) ~", var))
+    model <- coxph(formula, data = romania_pwid_hcv_test)
+    hr <- exp(coef(model))
+    ci <- exp(confint(model))
+    
+    # Only add HR/CI for the current level if it matches the coefficient name
+    if (paste0(var, lev) %in% names(hr)) {
+      results_list[[length(results_list) + 1]] <- data.frame(
+        Variable = var,
+        Level = lev,
+        HR = hr[paste0(var, lev)],
+        CI_lower = ci[paste0(var, lev), 1],
+        CI_upper = ci[paste0(var, lev), 2],
+        Cases = cases,
+        Person_Years = person_years
+      )
+    } else {
+      # For reference level (usually not shown in HR output)
+      results_list[[length(results_list) + 1]] <- data.frame(
+        Variable = var,
+        Level = lev,
+        HR = NA,
+        CI_lower = NA,
+        CI_upper = NA,
+        Cases = cases,
+        Person_Years = person_years
+      )
+    }
+  }
+}
+
+results_df <- do.call(rbind, results_list)
+write_xlsx(results_df, "cox_model_results_hcv.xlsx")
+
+# List of binary variables
+binary_vars <- c("sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", 
+                 "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever")
+
+# Create TableOne summary
+summary_table <- CreateTableOne(vars = binary_vars, data = romania_pwid_hcv_test)
+print(summary_table, showAllLevels = TRUE)
+
+# stratified by sex
+romania_pwid_hcv_test_male <- romania_pwid_hcv_test[romania_pwid_hcv_test$gender == "Male", ]
+romania_pwid_hcv_test_female <- romania_pwid_hcv_test[romania_pwid_hcv_test$gender == "Female", ]
+exposure_vars_strat <- setdiff(exposure_vars, "gender")
+
+# Function to run your analysis loop, using exposure_vars_strat
+run_cox_analysis <- function(data, gender_label) {
+  results_list <- list()
+  for (var in exposure_vars_strat) {  # Use exposure_vars_strat here!
+    levels_var <- if (is.factor(data[[var]])) {
+      levels(data[[var]])
+    } else {
+      unique(data[[var]])
+    }
+    for (lev in levels_var) {
+      subset_data <- data[data[[var]] == lev & !is.na(data[[var]]), ]
+      cases <- sum(subset_data$hcv_test_rslt == 1, na.rm = TRUE)
+      person_years <- sum(subset_data$py, na.rm = TRUE)
+      formula <- as.formula(paste("Surv(py, hcv_test_rslt) ~", var))
+      model <- coxph(formula, data = data)
+      hr <- exp(coef(model))
+      ci <- exp(confint(model))
+      if (paste0(var, lev) %in% names(hr)) {
+        results_list[[length(results_list) + 1]] <- data.frame(
+          Gender = gender_label,
+          Variable = var,
+          Level = lev,
+          HR = hr[paste0(var, lev)],
+          CI_lower = ci[paste0(var, lev), 1],
+          CI_upper = ci[paste0(var, lev), 2],
+          Cases = cases,
+          Person_Years = person_years
+        )
+      } else {
+        results_list[[length(results_list) + 1]] <- data.frame(
+          Gender = gender_label,
+          Variable = var,
+          Level = lev,
+          HR = NA,
+          CI_lower = NA,
+          CI_upper = NA,
+          Cases = cases,
+          Person_Years = person_years
+        )
+      }
+    }
+  }
+  do.call(rbind, results_list)
+}
+
+# Now run the analysis
+results_male <- run_cox_analysis(romania_pwid_hcv_test_male, "Male")
+results_female <- run_cox_analysis(romania_pwid_hcv_test_female, "Female")
+results_df_gender <- rbind(results_male, results_female)
+write_xlsx(results_df_gender, "cox_model_results_hcv_by_gender.xlsx")
 
 ## longitudinal analysis with Rubin's correction
 
