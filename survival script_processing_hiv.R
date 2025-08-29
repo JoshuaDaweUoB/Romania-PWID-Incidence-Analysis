@@ -290,6 +290,22 @@ current_table <- CreateTableOne(
 )
 print(current_table, showAllLevels = TRUE)
 
+# List of exposure pairs
+exposure_pairs <- list(
+  c("oat_12m", "oat_ever"),
+  c("sex_work_12m", "sex_work_ever"),
+  c("msm_12m", "msm_ever"),
+  c("homeless_12m", "homeless_ever")
+)
+
+# Count for each pair
+for (pair in exposure_pairs) {
+  count <- romania_pwid_hiv %>%
+    filter(.data[[pair[1]]] == 1 & is.na(.data[[pair[2]]])) %>%
+    summarise(n_ids = n_distinct(id))
+  cat(pair[1], "== 1 &", pair[2], "is NA: n_ids =", count$n_ids, "\n")
+}
+
 ## baseline hiv cohort
 
 # remove rows where hiv test result is missing

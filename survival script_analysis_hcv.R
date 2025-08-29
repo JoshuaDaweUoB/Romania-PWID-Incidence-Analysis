@@ -230,8 +230,13 @@ View(baseline_analysis_hcv)
 # load data
 romania_pwid_hcv_test <- read.csv("romania_pwid_hcv_test.csv", stringsAsFactors = FALSE)
 
+## cox risk factor analysis
+
+# load data
+romania_pwid_hcv_test <- read.csv("romania_pwid_hcv_test.csv", stringsAsFactors = FALSE)
+
 # exposures
-exposure_vars <- c("oat_12m", "oat_ever", "sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever", "gender", "age_4cat")
+exposure_vars <- c("oat_12m", "oat_ever", "sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever", "gender", "age_2cat")
 
 results_list <- list()
 
@@ -288,14 +293,6 @@ for (var in exposure_vars) {
 
 results_df <- do.call(rbind, results_list)
 write_xlsx(results_df, "cox_model_results_hcv.xlsx")
-
-# List of binary variables
-binary_vars <- c("sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", 
-                 "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever")
-
-# Create TableOne summary
-summary_table <- CreateTableOne(vars = binary_vars, data = romania_pwid_hcv_test)
-print(summary_table, showAllLevels = TRUE)
 
 # stratified by sex
 romania_pwid_hcv_test_male <- romania_pwid_hcv_test[romania_pwid_hcv_test$gender == "Male", ]

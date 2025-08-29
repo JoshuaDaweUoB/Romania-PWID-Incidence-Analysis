@@ -345,12 +345,6 @@ results_df_gender <- rbind(results_male, results_female)
 write_xlsx(results_df_gender, "cox_model_results_hiv_by_gender.xlsx")
 
 
-
-
-
-
-
-
 ## longitudinal analysis with Rubin's correction
 
 # sequence hiv_test_rslt by id and identify any IDs with multiple positive hiv_test_rslts

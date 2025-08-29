@@ -4,28 +4,54 @@ pacman::p_load(dplyr, tidyr, withr, lubridate, MASS, writexl, readxl, arsenal, s
 ## set wd
 setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/Romania PWID/data")
 
-## load data
-romania_pwid_raw <- read_excel("ARAS DATA IDU 2013-2022.xlsx")
-romania_pwid_treatment <- read_excel("FZC CDI 2013_2022_in tratament.xlsx")
+## oat treatment data
 
-## exposure data
+# load
+romania_pwid_treatment <- read_excel("FZC CDI 2013_2022_in tratament.xlsx")
 
 # rename date column
 romania_pwid_treatment <- romania_pwid_treatment %>%
   rename(appointment_dte = Data_A) %>%
   rename(id = "COD ALT")
 
+# make date column date format
+romania_pwid_treatment <- romania_pwid_treatment %>%
+  mutate(appointment_dte = as.Date(appointment_dte))
+
+print(names(romania_pwid_treatment))
+
 # delete redunant column and add oat column
 romania_pwid_treatment <- romania_pwid_treatment %>%
-  select(appointment_dte, id) %>%
+  dplyr::select(appointment_dte, id) %>%
   mutate(oat = 1)
+
+# first recorded oat 
+romania_pwid_treatment <- romania_pwid_treatment %>%
+  mutate(appointment_dte = as.Date(appointment_dte)) %>%
+  group_by(id) %>%
+  mutate(
+    oat_seq = cumsum(ifelse(oat == 1, 1, 0)),
+    oat_first_dte = min(appointment_dte[oat == 1], na.rm = TRUE)
+  ) %>%
+  ungroup()
+
+View(romania_pwid_treatment)
+
+## exposure data
+
+## load data
+romania_pwid_raw <- read_excel("ARAS DATA IDU 2013-2022.xlsx")
 
 # append treatment df to raw dataframe
 missing_cols <- setdiff(names(romania_pwid_raw), names(romania_pwid_treatment))
 romania_pwid_treatment[missing_cols] <- NA
 romania_pwid_raw <- bind_rows(romania_pwid_raw, romania_pwid_treatment)
 
-# recode gender
+# save combined data
+romania_pwid_hcv_combined <- romania_pwid_raw[!is.na(romania_pwid_raw$hcv_test_rslt) | !is.na(romania_pwid_raw$oat), ]
+write.csv(romania_pwid_hcv_combined, "romania_pwid_hcv_combined.csv")
+
+# recode gender 
 romania_pwid_hcv <- romania_pwid_raw %>%
   mutate(
     gender = case_when(
@@ -54,7 +80,75 @@ romania_pwid_hcv <- romania_pwid_hcv %>%
     age >= 40 ~ "40+"
   ))
 
-# find max value of exposure vars
+# sequence negative hcv tests
+
+# create row ids
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  arrange(id, appointment_dte) %>%
+  mutate(row_id = row_number())
+
+# subset negative tests and sequence
+hcv_tests <- romania_pwid_hcv %>%
+  filter(!is.na(hcv_test_rslt)) %>%
+  arrange(id, appointment_dte) %>%
+  group_by(id) %>%
+  mutate(hcv_test_seq = row_number()) %>%
+  ungroup() %>%
+  dplyr::select(row_id, hcv_test_seq) 
+
+# merge back using row_id
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  left_join(hcv_tests, by = "row_id")
+
+# ensure hcv_test_rslt is numeric
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  mutate(hcv_test_rslt = as.numeric(hcv_test_rslt))
+
+# date format appointment_dte
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  mutate(appointment_dte = as.Date(substr(appointment_dte, 1, 10)))
+
+# date of hcv test
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  mutate(hcv_test_dte = dplyr::if_else(hcv_test_rslt %in% c(1, 2), appointment_dte, as.Date(NA)))
+
+# create last_hcv_neg_test_dte
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  group_by(id) %>%
+  mutate(
+    last_hcv_test_dte = max(appointment_dte, na.rm = TRUE),
+    last_hcv_test_dte = replace(last_hcv_test_dte, is.infinite(last_hcv_test_dte), NA),
+    last_hcv_test_dte = as.Date(last_hcv_test_dte, origin = "1970-01-01")
+  ) %>%
+  ungroup()
+
+# delete rows that occured after last negative hcv test
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  filter(is.na(last_hcv_test_dte) | appointment_dte <= last_hcv_test_dte)
+
+# lifetime exposure variables
+
+# date exposures occured
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  mutate(
+    oat_dte = dplyr::if_else(oat == 1, appointment_dte, as.Date(NA)),
+    sex_work_current_dte = dplyr::if_else(sex_work_current == 1, appointment_dte, as.Date(NA)),
+    msm_current_dte = dplyr::if_else(msm_current == 1, appointment_dte, as.Date(NA)),
+    homeless_current_dte = dplyr::if_else(homeless_current == 1, appointment_dte, as.Date(NA))
+  )
+
+# find first exposure date
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  group_by(id) %>%
+  mutate(
+    oat_first_exposure_dte = min(oat_dte, na.rm = TRUE),
+    sex_work_current_first_exposure_dte = min(sex_work_current_dte, na.rm = TRUE),
+    homeless_current_first_exposure_dte = min(homeless_current_dte, na.rm = TRUE),
+    msm_current_first_exposure_dte = min(msm_current_dte, na.rm = TRUE)
+  ) %>%
+  ungroup()
+
+# recode other values of _ever to 1 for ids with any current exposure
 romania_pwid_hcv <- romania_pwid_hcv %>%
   group_by(id) %>%
   mutate(
@@ -66,6 +160,16 @@ romania_pwid_hcv <- romania_pwid_hcv %>%
     hiv_ever = ifelse(any(hiv == 1, na.rm = TRUE), 1, hiv)
   ) %>%
   ungroup()
+
+# set _ever variables to 0 before first exposure date
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  mutate(
+    oat_ever = ifelse(!is.na(oat_first_exposure_dte) & appointment_dte < oat_first_exposure_dte, 0, as.numeric(as.character(oat_ever))),
+    sex_work_ever = ifelse(!is.na(sex_work_current_first_exposure_dte) & appointment_dte < sex_work_current_first_exposure_dte, 0, as.numeric(as.character(sex_work_ever))),
+    msm_ever = ifelse(!is.na(msm_current_first_exposure_dte) & appointment_dte < msm_current_first_exposure_dte, 0, as.numeric(as.character(msm_ever))),
+    homeless_ever = ifelse(!is.na(homeless_current_first_exposure_dte) & appointment_dte < homeless_current_first_exposure_dte, 0, as.numeric(as.character(homeless_ever)))
+  ) %>%
+  mutate(across(ends_with("_ever"), ~factor(., levels = c(0, 1))))
 
 # select and order vars
 romania_pwid_hcv <- romania_pwid_hcv %>%
@@ -80,13 +184,25 @@ romania_pwid_hcv <- romania_pwid_hcv %>%
     everything()
   )
 
-# replace NAs with 0s
-romania_pwid_hcv <- romania_pwid_hcv %>%
-  mutate(across(ends_with("_ever"), ~replace_na(., 0)))
+ever_vars <- c("oat_ever", "sex_work_ever", "msm_ever", "homeless_ever")
+table_ever <- CreateTableOne(vars = ever_vars, data = romania_pwid_hcv)
+print(table_ever, showAllLevels = TRUE)
 
-# convert to factors
+# find first negative hcv test date for each id
+first_neg_dates <- romania_pwid_hcv %>%
+  filter(neg_hcv_seq == 1) %>%
+  group_by(id) %>%
+  summarise(first_hcv_neg_test_dte = min(appointment_dte, na.rm = TRUE), .groups = "drop")
+
+# join back to all rows
 romania_pwid_hcv <- romania_pwid_hcv %>%
-  mutate(across(ends_with("_ever"), as.factor))
+  left_join(first_neg_dates, by = "id") %>%
+  mutate(
+    before_first_neg = if_else(
+      !is.na(first_hcv_neg_test_dte) & appointment_dte < first_hcv_neg_test_dte,
+      1L, 0L
+    )
+  )
 
 # 12 months vars
 romania_pwid_hcv <- romania_pwid_hcv %>%
@@ -172,6 +288,22 @@ current_table <- CreateTableOne(
   data = romania_pwid_hcv
 )
 print(current_table, showAllLevels = TRUE)
+
+# List of exposure pairs
+exposure_pairs <- list(
+  c("oat_12m", "oat_ever"),
+  c("sex_work_12m", "sex_work_ever"),
+  c("msm_12m", "msm_ever"),
+  c("homeless_12m", "homeless_ever")
+)
+
+# Count for each pair
+for (pair in exposure_pairs) {
+  count <- romania_pwid_hcv %>%
+    filter(.data[[pair[1]]] == 1 & is.na(.data[[pair[2]]])) %>%
+    summarise(n_ids = n_distinct(id))
+  cat(pair[1], "== 1 &", pair[2], "is NA: n_ids =", count$n_ids, "\n")
+}
 
 ## baseline HCV cohort
 
@@ -400,23 +532,6 @@ upper <- (qchisq(0.975, 2 * (cases + 1)) / 2) / person_time * 100
 
 cat("HCV Incidence Rate:", round(ir, 2), "per 100 PY (95% CI:", round(lower, 2), "-", round(upper, 2), 
     "| Cases:", cases, "| Person-years:", round(person_time, 2), ")\n")
-
-# models for lifetime exposures
-exposure_vars <- c("sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever", "gender", "age_4cat", "age_2cat")
-
-for (var in exposure_vars) {
-  formula <- as.formula(paste("hcv_test_rslt ~", var))
-  cat("\nPoisson regression for", var, "\n")
-  model <- glm(formula, data = romania_pwid_hcv_test, family = poisson())
-  coef_table <- coef(summary(model))
-  rr <- exp(coef(model))
-  ci <- exp(confint(model))
-  cat("Rate Ratios (RR) and 95% Confidence Intervals:\n")
-  for (i in 1:length(rr)) {
-    cat(names(rr)[i], ": RR =", round(rr[i], 2),
-        " (95% CI:", round(ci[i, 1], 2), "-", round(ci[i, 2], 2), ")\n")
-  }
-}
 
 ## random-point sampling with 10000 iterations approach
 
