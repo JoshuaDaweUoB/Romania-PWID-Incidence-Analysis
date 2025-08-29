@@ -35,8 +35,6 @@ romania_pwid_treatment <- romania_pwid_treatment %>%
   ) %>%
   ungroup()
 
-View(romania_pwid_treatment)
-
 ## exposure data
 
 ## load data
@@ -128,6 +126,25 @@ romania_pwid_hcv <- romania_pwid_hcv %>%
 
 # lifetime exposure variables
 
+# recode roma ethnicity
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  group_by(id) %>%
+  mutate(ethnic_roma_ever = ifelse(any(ethnic_roma == 1, na.rm = TRUE), 1, 0)) %>%
+  ungroup() %>%
+  mutate(ethnic_roma_ever = factor(ethnic_roma_ever, levels = c(0, 1)))
+
+# recode hiv ever
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  group_by(id) %>%
+  mutate(hiv_ever = ifelse(any(hiv == 1, na.rm = TRUE), 1, 0)) %>%
+  ungroup() %>%
+  mutate(hiv_ever = factor(hiv_ever, levels = c(0, 1)))
+
+# tab out unchanging lifetime vars
+vars <- c("ethnic_roma_ever", "hiv_ever")
+table_roma_hiv <- CreateTableOne(vars = vars, data = romania_pwid_hcv)
+print(table_roma_hiv, showAllLevels = TRUE)
+
 # date exposures occured
 romania_pwid_hcv <- romania_pwid_hcv %>%
   mutate(
@@ -155,9 +172,7 @@ romania_pwid_hcv <- romania_pwid_hcv %>%
     oat_ever = ifelse(any(oat == 1, na.rm = TRUE), 1, oat),
     sex_work_ever = ifelse(any(sex_work_current == 1, na.rm = TRUE), 1, sex_work_current),
     msm_ever = ifelse(any(msm_current == 1, na.rm = TRUE), 1, msm_current),
-    homeless_ever = ifelse(any(homeless_current == 1, na.rm = TRUE), 1, homeless_current),
-    ethnic_roma_ever = ifelse(any(ethnic_roma == 1, na.rm = TRUE), 1, ethnic_roma),
-    hiv_ever = ifelse(any(hiv == 1, na.rm = TRUE), 1, hiv)
+    homeless_ever = ifelse(any(homeless_current == 1, na.rm = TRUE), 1, homeless_current)
   ) %>%
   ungroup()
 
@@ -184,7 +199,7 @@ romania_pwid_hcv <- romania_pwid_hcv %>%
     everything()
   )
 
-ever_vars <- c("oat_ever", "sex_work_ever", "msm_ever", "homeless_ever")
+ever_vars <- c("oat_ever", "sex_work_ever", "msm_ever", "homeless_ever", "hiv_ever", "ethnic_roma_ever")
 table_ever <- CreateTableOne(vars = ever_vars, data = romania_pwid_hcv)
 print(table_ever, showAllLevels = TRUE)
 
@@ -282,14 +297,14 @@ romania_pwid_hcv$msm_current <- as.factor(romania_pwid_hcv$msm_current)
 romania_pwid_hcv$oat_12m <- as.factor(romania_pwid_hcv$oat_12m)
 
 # table of exposures
-current_vars <- c("oat_12m", "oat_ever", "homeless_12m", "homeless_current", "homeless_ever", "sex_work_12m", "sex_work_current", "sex_work_ever", "msm_12m", "msm_current", "msm_ever")
+current_vars <- c("oat_12m", "oat_ever", "homeless_12m", "homeless_current", "homeless_ever", "sex_work_12m", "sex_work_current", "sex_work_ever", "msm_12m", "msm_current", "msm_ever", "hiv_ever", "ethnic_roma_ever")
 current_table <- CreateTableOne(
   vars = current_vars,
   data = romania_pwid_hcv
 )
 print(current_table, showAllLevels = TRUE)
 
-# List of exposure pairs
+# list of exposure pairs
 exposure_pairs <- list(
   c("oat_12m", "oat_ever"),
   c("sex_work_12m", "sex_work_ever"),
@@ -297,7 +312,7 @@ exposure_pairs <- list(
   c("homeless_12m", "homeless_ever")
 )
 
-# Count for each pair
+# make sure no recently exposed are never exposed
 for (pair in exposure_pairs) {
   count <- romania_pwid_hcv %>%
     filter(.data[[pair[1]]] == 1 & is.na(.data[[pair[2]]])) %>%
@@ -480,12 +495,6 @@ romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
     )
   )
 
-current_table <- CreateTableOne(
-  vars = current_vars,
-  data = romania_pwid_hcv
-)
-print(current_table, showAllLevels = TRUE)
-
 # QA for rows where appointment_dte_lag is less than appointment_dte
 invalid_rows <- romania_pwid_hcv_test %>%
   filter(appointment_dte_lag < appointment_dte)
@@ -501,7 +510,7 @@ romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
 # List of exposure variables 
 exposure_vars <- c("oat_12m", "oat_ever", "sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever", "gender", "age_4cat")
 
-# Create TableOne summary stratified by hiv_ever
+# table of exposure variables
 exposure_vars <- CreateTableOne(vars = exposure_vars, data = romania_pwid_hcv_test)
 
 print(exposure_vars)
