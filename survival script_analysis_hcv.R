@@ -5,16 +5,16 @@ pacman::p_load(tidyr, withr, lubridate, MASS, writexl, readxl, arsenal, survival
 setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/Romania PWID/data")
 
 ## Baseline prevalence and predictors of HCV infection
-
+ 
 # load data
 baseline_analysis_hcv <- read.csv("romania_pwid_hcv_bl.csv")
 
 # sequence by id 
 baseline_analysis_hcv <- baseline_analysis_hcv %>%
-  arrange(id) %>%  # Ensure rows are sorted by id
-  mutate(id_seq = cumsum(!duplicated(id)))  # Increment by 1 for each new id
-
-View(baseline_analysis_hcv)
+  arrange(id, appointment_dte) %>%
+  group_by(id) %>%
+  mutate(id_seq = row_number()) %>%
+  ungroup()
 
 # highest value in the id_seq column
 highest_id_seq <- baseline_analysis_hcv %>%
@@ -22,26 +22,11 @@ highest_id_seq <- baseline_analysis_hcv %>%
 cat("Highest value in id_seq:\n")
 print(highest_id_seq)
 
-# remove rows where hcv test result is missing
-baseline_analysis_hcv <- baseline_analysis_hcv[!is.na(baseline_analysis_hcv$hcv_test_rslt), ]
-
-# remove rows where hcv test result is indeterminate
-baseline_analysis_hcv <- baseline_analysis_hcv %>%
-  filter(!hcv_test_rslt == 3)
-
-# create sequence of visits by ID
-baseline_analysis_hcv <- baseline_analysis_hcv %>%
-  group_by(id) %>%
-  arrange(id, appointment_dte) %>%
-  mutate(appointment_seq = row_number())
-
-baseline_analysis_hcv <- ungroup(baseline_analysis_hcv)
-
 # keep rows where appointment_seq equals 1
 baseline_analysis_hcv <- baseline_analysis_hcv %>%
   filter(appointment_seq == 1)
 
-# subset romania_pwid_hcv to include only rows that match id, appointment_dte, and hcv_test_seq in romania_pwid_hcv_test
+# recode variables
 baseline_analysis_hcv <- baseline_analysis_hcv %>%
   mutate(
     sex_work_12m = ifelse(is.na(sex_work_current), 0, sex_work_current),
@@ -50,180 +35,373 @@ baseline_analysis_hcv <- baseline_analysis_hcv %>%
     ethnic_roma_ever = ifelse(is.na(ethnic_roma), 0, ethnic_roma),
     gender = ifelse(gender == 2, 0, gender) 
   )
-View(baseline_analysis_hcv)
 
-# # ensure dob is in the correct Date format
-# baseline_analysis_hcv <- baseline_analysis_hcv %>%
-#   mutate(dob = as.Date(dob, format = "%d/%m/%Y")) %>%
-#   mutate(age_years = as.numeric(difftime(appointment_dte, dob, units = "days")) / 365.25) %>%
-#   mutate(age_bin = ifelse(age_years < 30, 0, 1))
+# change test results to 0 and 1
+baseline_analysis_hcv <- baseline_analysis_hcv %>%
+  mutate(hcv_test_rslt = case_when(
+    hcv_test_rslt == 1 ~ 0,
+    hcv_test_rslt == 2 ~ 1,
+    TRUE ~ hcv_test_rslt
+  ))
 
-# # change test results to 0 and 1
-# baseline_analysis_hcv <- baseline_analysis_hcv %>%
-#   mutate(hcv_test_rslt = case_when(
-#     hcv_test_rslt == 1 ~ 0,
-#     hcv_test_rslt == 2 ~ 1,
-#     TRUE ~ hcv_test_rslt
-#   ))
+# look at results
+baseline_analysis_hcv$hcv_test_rslt <- factor(baseline_analysis_hcv$hcv_test_rslt, levels = c(0, 1), labels = c("Negative", "Positive"))
+table1 <- CreateTableOne(vars = "hcv_test_rslt", data = baseline_analysis_hcv)
+print(table1, showAllLevels = TRUE)
 
-# # Filter the dataset to include only rows where hcv_test_rslt is 0 or 1
-# baseline_analysis_hcv <- baseline_analysis_hcv %>%
-#   filter(hcv_test_rslt %in% c(0, 1))
+# create summary table
+hcv_summary_table <- baseline_analysis_hcv %>%
+  dplyr::select(
+    sex_work_12m, sex_work_ever,
+    homeless_12m, homeless_ever,
+    ethnic_roma_ever,
+    oat_12m, oat_ever,
+    gender, age_4cat, hcv_test_rslt
+  ) %>%
+  mutate(across(
+    c(
+      sex_work_12m, sex_work_ever,
+      homeless_12m, homeless_ever,
+      ethnic_roma_ever,
+      oat_12m, oat_ever,
+      gender, age_4cat
+    ),
+    as.character
+  )) %>%
+  pivot_longer(
+    cols = c(
+      sex_work_12m, sex_work_ever,
+      homeless_12m, homeless_ever,
+      ethnic_roma_ever,
+      oat_12m, oat_ever,
+      gender, age_4cat
+    ),
+    names_to = "Variable",
+    values_to = "Level"
+  ) %>%
+  group_by(Variable, Level, hcv_test_rslt) %>%
+  summarise(
+    Count = n(),
+    .groups = "drop"
+  ) %>%
+  pivot_wider(
+    names_from = hcv_test_rslt,
+    values_from = Count,
+    values_fill = 0
+  ) %>%
+  rename(
+    HCV_Negative = Negative,
+    HCV_Positive = Positive
+  ) %>%
+  mutate(
+    Total = HCV_Negative + HCV_Positive,
+    Proportion_Positive = (HCV_Positive / Total) * 100
+  ) %>%
+  group_by(Variable) %>%
+  mutate(
+    ref_level = case_when(
+      Variable == "age_4cat" ~ "<30",
+      Variable == "gender" ~ "Female",
+      TRUE ~ "0"
+    ),
+    ref_pos = HCV_Positive[Level == ref_level][1],
+    ref_neg = HCV_Negative[Level == ref_level][1],
+    OR = ifelse(Level == ref_level, 1, (HCV_Positive / HCV_Negative) / (ref_pos / ref_neg)),
+    logOR = ifelse(Level == ref_level, NA, log(OR)),
+    SE_logOR = ifelse(Level == ref_level, NA, sqrt(1/HCV_Positive + 1/HCV_Negative + 1/ref_pos + 1/ref_neg)),
+    CI_lower = ifelse(Level == ref_level, NA, exp(logOR - 1.96 * SE_logOR)),
+    CI_upper = ifelse(Level == ref_level, NA, exp(logOR + 1.96 * SE_logOR))
+  ) %>%
+  ungroup() %>%
+  select(-ref_level, -ref_pos, -ref_neg, -logOR, -SE_logOR)
 
-# # summary table with variables as rows and hcv_test_rslt levels as columns
-# hcv_summary_table <- baseline_analysis_hcv %>%
-#   dplyr::select(sex_work_current, homeless_current, ethnic_roma, gender, age_bin, hcv_test_rslt) %>%
-#   pivot_longer(
-#     cols = c(sex_work_current, homeless_current, ethnic_roma, gender, age_bin),
-#     names_to = "Variable",
-#     values_to = "Level"
-#   ) %>%
-#   group_by(Variable, Level, hcv_test_rslt) %>%
-#   summarise(
-#     Count = n(),
-#     .groups = "drop"
-#   ) %>%
-#   pivot_wider(
-#     names_from = hcv_test_rslt,
-#     values_from = Count,
-#     values_fill = 0  # Fill missing values with 0
-#   ) %>%
-#   rename(
-#     HCV_Negative = `0`,
-#     HCV_Positive = `1`
-#   ) %>%
-#   mutate(
-#     Total = HCV_Negative + HCV_Positive,
-#     Proportion_Positive = (HCV_Positive / Total) * 100
-#   )
+# format frequencies and ORs
+hcv_summary_table <- hcv_summary_table %>%
+  mutate(
+    num_perc = sprintf("%d (%.1f)", HCV_Positive, Proportion_Positive),
+    or_formatted = ifelse(
+      is.na(OR),
+      "",
+      sprintf("%.2f (%.2f-%.2f)", OR, CI_lower, CI_upper)
+    )
+  )
 
-# # print and save the summary table
-# print(hcv_summary_table)
-# write.csv(hcv_summary_table, "hcv_summary_table.csv", row.names = FALSE)
+# save the summary table
+write.csv(hcv_summary_table, "hcv_summary_table.csv", row.names = FALSE)
 
-# # filter dataset to include only rows where gender == 1
-# baseline_analysis_hcv_gender_1 <- baseline_analysis_hcv %>%
-#   filter(gender == 1)
+# tables stratified by gender
 
-# # summary table for msm_current with hcv_test_rslt levels as columns
-# msm_summary_table <- baseline_analysis_hcv_gender_1 %>%
-#   dplyr::select(msm_current, hcv_test_rslt) %>%
-#   group_by(msm_current, hcv_test_rslt) %>%
-#   summarise(
-#     Count = n(),
-#     .groups = "drop"
-#   ) %>%
-#   pivot_wider(
-#     names_from = hcv_test_rslt,
-#     values_from = Count,
-#     values_fill = 0
-#   ) %>%
-#   rename(
-#     HCV_Negative = `0`,
-#     HCV_Positive = `1`
-#   ) %>%
-#   mutate(
-#     Total = HCV_Negative + HCV_Positive,
-#     Proportion_Positive = (HCV_Positive / Total) * 100
-#   )
+# list of variables for tables
+vars_to_summarize <- c(
+  "sex_work_12m", "sex_work_ever",
+  "homeless_12m", "homeless_ever",
+  "ethnic_roma_ever",
+  "oat_12m", "oat_ever",
+  "age_4cat"
+)
 
-# # print and save msm summary table
-# print(msm_summary_table)
-# write.csv(msm_summary_table, "msm_summary_table_gender_1.csv", row.names = FALSE)
+# loop over gender and create tables
+gender_levels <- unique(baseline_analysis_hcv$gender)
+
+hcv_summary_tables_by_gender <- lapply(gender_levels, function(g) {
+  tab <- baseline_analysis_hcv %>%
+    filter(gender == g) %>%
+    dplyr::select(all_of(vars_to_summarize), hcv_test_rslt) %>%
+    mutate(across(all_of(vars_to_summarize), as.character)) %>%
+    pivot_longer(
+      cols = all_of(vars_to_summarize),
+      names_to = "Variable",
+      values_to = "Level"
+    ) %>%
+    group_by(Variable, Level, hcv_test_rslt) %>%
+    summarise(
+      Count = n(),
+      .groups = "drop"
+    ) %>%
+    pivot_wider(
+      names_from = hcv_test_rslt,
+      values_from = Count,
+      values_fill = 0
+    ) %>%
+    rename(
+      HCV_Negative = Negative,
+      HCV_Positive = Positive
+    ) %>%
+    mutate(
+      Total = HCV_Negative + HCV_Positive,
+      Proportion_Positive = (HCV_Positive / Total) * 100
+    ) %>%
+    group_by(Variable) %>%
+    mutate(
+      ref_level = case_when(
+        Variable == "age_4cat" ~ "<30",
+        TRUE ~ "0"
+      ),
+      ref_pos = HCV_Positive[Level == ref_level][1],
+      ref_neg = HCV_Negative[Level == ref_level][1],
+      OR = ifelse(Level == ref_level, 1, (HCV_Positive / HCV_Negative) / (ref_pos / ref_neg)),
+      logOR = ifelse(Level == ref_level, NA, log(OR)),
+      SE_logOR = ifelse(Level == ref_level, NA, sqrt(1/HCV_Positive + 1/HCV_Negative + 1/ref_pos + 1/ref_neg)),
+      CI_lower = ifelse(Level == ref_level, NA, exp(logOR - 1.96 * SE_logOR)),
+      CI_upper = ifelse(Level == ref_level, NA, exp(logOR + 1.96 * SE_logOR)),
+      num_perc = sprintf("%d (%.1f)", HCV_Positive, Proportion_Positive),
+      or_formatted = ifelse(
+        is.na(OR), "",
+        sprintf("%.2f (%.2f-%.2f)", OR, CI_lower, CI_upper)
+      ),
+      Gender = g
+    ) %>%
+    ungroup() %>%
+    select(-ref_level, -ref_pos, -ref_neg, -logOR, -SE_logOR)
+  tab
+})
+
+for (i in seq_along(gender_levels)) {
+  write.csv(
+    hcv_summary_tables_by_gender[[i]],
+    paste0("hcv_summary_table_gender_", gender_levels[i], ".csv"),
+    row.names = FALSE
+  )
+}
 
 # ## differences between excluded and included in longitudinal analysis
 
-# # remove rows where hcv test result is missing
-# romania_pwid_hcv_tb2 <- romania_pwid_raw[!is.na(romania_pwid_raw$hcv_test_rslt), ]
+# load data
+baseline_analysis_hcv <- read.csv("romania_pwid_hcv_bl.csv")
+romania_pwid_hcv_test <- read.csv("romania_pwid_hcv_test.csv", stringsAsFactors = FALSE)
 
-# # remove rows where hcv test result is indeterminate
-# romania_pwid_hcv_tb2 <- romania_pwid_hcv_tb2 %>%
-#   filter(!hcv_test_rslt == 3)
+# create included columns
+romania_pwid_hcv_test$included2 <- "Yes"
+baseline_analysis_hcv$included <- "No"
 
-# # create sequence of visits by ID
-# romania_pwid_hcv_tb2 <- romania_pwid_hcv_tb2 %>%
-#   group_by(id) %>%
-#   arrange(id, appointment_dte) %>%
-#   mutate(appointment_seq = row_number())
+# create included dataframe
+romania_pwid_hcv_test_included <- romania_pwid_hcv_test[, c("id", "included2")]
+romania_pwid_hcv_test_included <- romania_pwid_hcv_test_included[!duplicated(romania_pwid_hcv_test_included$id), ]
+baseline_analysis_hcv <- baseline_analysis_hcv %>%
+  left_join(romania_pwid_hcv_test_included, by = "id")
 
-# romania_pwid_hcv_tb2 <- ungroup(romania_pwid_hcv_tb2)
+# replace No includes with Yes and delete included2
+baseline_analysis_hcv$included[baseline_analysis_hcv$included2 == "Yes"] <- "Yes"
+baseline_analysis_hcv$included2 <- NULL
 
-# # remove IDs where hcv positive at baseline
-# ids_to_remove <- romania_pwid_hcv_tb2 %>%
-#   filter(appointment_seq == 1 & hcv_test_rslt == 2) %>%
-#   pull(id)
+# sequence by id 
+baseline_analysis_hcv <- baseline_analysis_hcv %>%
+  arrange(id, appointment_dte) %>%
+  group_by(id) %>%
+  mutate(id_seq = row_number()) %>%
+  ungroup()
 
-# romania_pwid_hcv_tb2 <- romania_pwid_hcv_tb2 %>%
-#   filter(!(id %in% ids_to_remove))
+# highest value in the id_seq column
+highest_id_seq <- baseline_analysis_hcv %>%
+  summarise(max_id_seq = max(id_seq, na.rm = TRUE))
+cat("Highest value in id_seq:\n")
+print(highest_id_seq)
 
-# # flag participants with multiple tests
-# romania_pwid_hcv_tb2 <- romania_pwid_hcv_tb2 %>%
-#   group_by(id) %>%
-#   arrange(id) %>%
-#   mutate(hcv_test_seq = row_number())
+# keep rows where appointment_seq equals 1
+baseline_analysis_hcv <- baseline_analysis_hcv %>%
+  filter(appointment_seq == 1)
 
-# # create indicator of multiple tests vs. single test
-# romania_pwid_hcv_tb2 <- romania_pwid_hcv_tb2 %>%
-#   group_by(id) %>%
-#   mutate(
-#     hcv_test_seq_max = max(hcv_test_seq, na.rm = TRUE),
-#     hcv_test_seq_bin = ifelse(hcv_test_seq_max == 1, 0, 1)
-#   ) %>%
-#   ungroup()
+# change test results to 0 and 1
+baseline_analysis_hcv <- baseline_analysis_hcv %>%
+  mutate(hcv_test_rslt = case_when(
+    hcv_test_rslt == 1 ~ 0,
+    hcv_test_rslt == 2 ~ 1,
+    TRUE ~ hcv_test_rslt
+  ))
 
-# # keep participants first test
-# romania_pwid_hcv_tb2 <- romania_pwid_hcv_tb2 %>%
-#   filter(hcv_test_seq == 1)
+# drop individuals who are positive at baseline
+baseline_analysis_hcv <- baseline_analysis_hcv %>%
+  filter(hcv_test_rslt == 0)
 
-# # summary table for hcv_test_seq_bin
-# hcv_test_seq_bin_summary <- romania_pwid_hcv_tb2 %>%
-#   group_by(hcv_test_seq_bin) %>%
-#   summarise(
-#     Count = n(),
-#     Proportion = (n() / nrow(romania_pwid_hcv_tb2)) * 100
-#   )
+# recode variables
+baseline_analysis_hcv <- baseline_analysis_hcv %>%
+  mutate(
+    sex_work_12m = ifelse(is.na(sex_work_current), 0, sex_work_current),
+    msm_12m = ifelse(is.na(msm_current), 0, msm_current),
+    homeless_12m = ifelse(is.na(homeless_current), 0, homeless_current),
+    ethnic_roma_ever = ifelse(is.na(ethnic_roma), 0, ethnic_roma),
+    gender = ifelse(gender == 2, 0, gender) 
+  )
 
-# # summary table
-# print(hcv_test_seq_bin_summary)
+# tables of included vs. excluded
+included_summary_table <- baseline_analysis_hcv %>%
+  dplyr::select(
+    sex_work_12m, sex_work_ever,
+    homeless_12m, homeless_ever,
+    ethnic_roma_ever,
+    oat_12m, oat_ever,
+    gender, age_4cat, included
+  ) %>%
+  mutate(across(
+    c(
+      sex_work_12m, sex_work_ever,
+      homeless_12m, homeless_ever,
+      ethnic_roma_ever,
+      oat_12m, oat_ever,
+      gender, age_4cat
+    ),
+    as.character
+  )) %>%
+  pivot_longer(
+    cols = c(
+      sex_work_12m, sex_work_ever,
+      homeless_12m, homeless_ever,
+      ethnic_roma_ever,
+      oat_12m, oat_ever,
+      gender, age_4cat
+    ),
+    names_to = "Variable",
+    values_to = "Level"
+  ) %>%
+  group_by(Variable, Level, included) %>%
+  summarise(
+    Count = n(),
+    .groups = "drop"
+  ) %>%
+  pivot_wider(
+    names_from = included,
+    values_from = Count,
+    values_fill = 0
+  ) %>%
+  rename(
+    Included_Yes = Yes,
+    Included_No = No
+  ) %>%
+  mutate(
+    Total = Included_Yes + Included_No,
+    Proportion_Included = (Included_Yes / Total) * 100
+  ) %>%
+  group_by(Variable) %>%
+  mutate(
+    ref_level = case_when(
+      Variable == "age_4cat" ~ "<30",
+      Variable == "gender" ~ "Female",
+      TRUE ~ "0"
+    ),
+    ref_yes = Included_Yes[Level == ref_level][1],
+    ref_no = Included_No[Level == ref_level][1],
+    OR = ifelse(Level == ref_level, 1, (Included_Yes / Included_No) / (ref_yes / ref_no)),
+    logOR = ifelse(Level == ref_level, NA, log(OR)),
+    SE_logOR = ifelse(Level == ref_level, NA, sqrt(1/Included_Yes + 1/Included_No + 1/ref_yes + 1/ref_no)),
+    CI_lower = ifelse(Level == ref_level, NA, exp(logOR - 1.96 * SE_logOR)),
+    CI_upper = ifelse(Level == ref_level, NA, exp(logOR + 1.96 * SE_logOR))
+  ) %>%
+  ungroup() %>%
+  select(-ref_level, -ref_yes, -ref_no, -logOR, -SE_logOR) %>%
+  mutate(
+    num_perc = sprintf("%d (%.1f)", Included_Yes, Proportion_Included),
+    or_formatted = ifelse(
+      is.na(OR),
+      "",
+      sprintf("%.2f (%.2f-%.2f)", OR, CI_lower, CI_upper)
+    )
+  )
 
-# # ensure dob is in the correct Date format
-# romania_pwid_hcv_tb2 <- romania_pwid_hcv_tb2 %>%
-#   mutate(dob = as.Date(dob, format = "%d/%m/%Y")) %>%
-#   mutate(age_years = as.numeric(difftime(appointment_dte, dob, units = "days")) / 365.25) %>%
-#   mutate(age_bin = ifelse(age_years < 30, 0, 1))
+write.csv(included_summary_table, "hcv_included_summary_table.csv", row.names = FALSE)
 
-# # create table of differences between included and excluded participants
+# tables stratified by gender
+gender_levels <- unique(baseline_analysis_hcv$gender)
 
-# # create a summary table
-# summary_table <- romania_pwid_hcv_tb2 %>%
-#   dplyr::select(sex_work_current, homeless_current, ethnic_roma, age_bin, gender, hcv_test_seq_bin) %>%
-#   pivot_longer(
-#     cols = c(sex_work_current, homeless_current, ethnic_roma, age_bin, gender),
-#     names_to = "Variable",
-#     values_to = "Level"
-#   ) %>%
-#   group_by(Variable, Level, hcv_test_seq_bin) %>%
-#   summarise(
-#     Count = n(),
-#     .groups = "drop"
-#   ) %>%
-#   pivot_wider(
-#     names_from = hcv_test_seq_bin,
-#     values_from = Count,
-#     values_fill = 0
-#   ) %>%
-#   rename(
-#     Single_Test = `0`,
-#     Multiple_Tests = `1`
-#   ) %>%
-#   mutate(
-#     Total = Single_Test + Multiple_Tests,
-#     Proportion_Multiple_Tests = (Multiple_Tests / Total) * 100
-#   )
+included_summary_tables_by_gender <- lapply(gender_levels, function(g) {
+  tab <- baseline_analysis_hcv %>%
+    filter(gender == g) %>%
+    dplyr::select(all_of(vars_to_summarize), included) %>%
+    mutate(across(all_of(vars_to_summarize), as.character)) %>%
+    pivot_longer(
+      cols = all_of(vars_to_summarize),
+      names_to = "Variable",
+      values_to = "Level"
+    ) %>%
+    group_by(Variable, Level, included) %>%
+    summarise(
+      Count = n(),
+      .groups = "drop"
+    ) %>%
+    pivot_wider(
+      names_from = included,
+      values_from = Count,
+      values_fill = 0
+    ) %>%
+    rename(
+      Included_Yes = Yes,
+      Included_No = No
+    ) %>%
+    mutate(
+      Total = Included_Yes + Included_No,
+      Proportion_Included = (Included_Yes / Total) * 100
+    ) %>%
+    group_by(Variable) %>%
+    mutate(
+      ref_level = case_when(
+        Variable == "age_4cat" ~ "<30",
+        TRUE ~ "0"
+      ),
+      ref_yes = Included_Yes[Level == ref_level][1],
+      ref_no = Included_No[Level == ref_level][1],
+      OR = ifelse(Level == ref_level, 1, (Included_Yes / Included_No) / (ref_yes / ref_no)),
+      logOR = ifelse(Level == ref_level, NA, log(OR)),
+      SE_logOR = ifelse(Level == ref_level, NA, sqrt(1/Included_Yes + 1/Included_No + 1/ref_yes + 1/ref_no)),
+      CI_lower = ifelse(Level == ref_level, NA, exp(logOR - 1.96 * SE_logOR)),
+      CI_upper = ifelse(Level == ref_level, NA, exp(logOR + 1.96 * SE_logOR)),
+      num_perc = sprintf("%d (%.1f)", Included_Yes, Proportion_Included),
+      or_formatted = ifelse(
+        is.na(OR), "",
+        sprintf("%.2f (%.2f-%.2f)", OR, CI_lower, CI_upper)
+      ),
+      Gender = g
+    ) %>%
+    ungroup() %>%
+    select(-ref_level, -ref_yes, -ref_no, -logOR, -SE_logOR)
+  tab
+})
 
-# # print and save summary table
-# print(summary_table)
-# write.csv(summary_table, "hcv_test_seq_bin_summary_table.csv", row.names = FALSE)
+for (i in seq_along(gender_levels)) {
+  write.csv(
+    included_summary_tables_by_gender[[i]],
+    paste0("hcv_included_summary_table_gender_", gender_levels[i], ".csv"),
+    row.names = FALSE
+  )
+}
 
 ## cox risk factor analysis
 

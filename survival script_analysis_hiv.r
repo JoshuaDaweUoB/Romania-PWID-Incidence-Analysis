@@ -6,223 +6,403 @@ setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/
 
 # ## Baseline prevalence and predictors of hiv infection
 
-# # load data
-# baseline_analysis_hiv <- romania_pwid_raw
+# load data
+baseline_analysis_hiv <- read.csv("romania_pwid_hiv_bl.csv")
 
-# # sequence by id 
-# baseline_analysis_hiv <- baseline_analysis_hiv %>%
-#   arrange(id) %>%  # Ensure rows are sorted by id
-#   mutate(id_seq = cumsum(!duplicated(id)))  # Increment by 1 for each new id
+# sequence by id 
+baseline_analysis_hiv <- baseline_analysis_hiv %>%
+  arrange(id, appointment_dte) %>%
+  group_by(id) %>%
+  mutate(id_seq = row_number()) %>%
+  ungroup()
 
-# View(baseline_analysis_hiv)
+# highest value in the id_seq column
+highest_id_seq <- baseline_analysis_hiv %>%
+  summarise(max_id_seq = max(id_seq, na.rm = TRUE))
+cat("Highest value in id_seq:\n")
+print(highest_id_seq)
 
-# # highest value in the id_seq column
-# highest_id_seq <- baseline_analysis_hiv %>%
-#   summarise(max_id_seq = max(id_seq, na.rm = TRUE))
-# cat("Highest value in id_seq:\n")
-# print(highest_id_seq)
+# keep rows where appointment_seq equals 1
+baseline_analysis_hiv <- baseline_analysis_hiv %>%
+  filter(appointment_seq == 1)
 
-# # remove rows where hiv test result is missing
-# baseline_analysis_hiv <- baseline_analysis_hiv[!is.na(baseline_analysis_hiv$hiv_test_rslt), ]
+# recode variables
+baseline_analysis_hiv <- baseline_analysis_hiv %>%
+  mutate(
+    sex_work_12m = ifelse(is.na(sex_work_current), 0, sex_work_current),
+    msm_12m = ifelse(is.na(msm_current), 0, msm_current),
+    homeless_12m = ifelse(is.na(homeless_current), 0, homeless_current),
+    ethnic_roma_ever = ifelse(is.na(ethnic_roma), 0, ethnic_roma),
+    gender = ifelse(gender == 2, 0, gender) 
+  )
 
-# # remove rows where hiv test result is indeterminate
-# baseline_analysis_hiv <- baseline_analysis_hiv %>%
-#   filter(!hiv_test_rslt == 3)
+# change test results to 0 and 1
+baseline_analysis_hiv <- baseline_analysis_hiv %>%
+  mutate(hiv_test_rslt = case_when(
+    hiv_test_rslt == 1 ~ 0,
+    hiv_test_rslt == 2 ~ 1,
+    TRUE ~ hiv_test_rslt
+  ))
 
-# # create sequence of visits by ID
-# baseline_analysis_hiv <- baseline_analysis_hiv %>%
-#   group_by(id) %>%
-#   arrange(id, appointment_dte) %>%
-#   mutate(appointment_seq = row_number())
+# look at results
+baseline_analysis_hiv$hiv_test_rslt <- factor(baseline_analysis_hiv$hiv_test_rslt, levels = c(0, 1), labels = c("Negative", "Positive"))
+table1 <- CreateTableOne(vars = "hiv_test_rslt", data = baseline_analysis_hiv)
+print(table1, showAllLevels = TRUE)
 
-# baseline_analysis_hiv <- ungroup(baseline_analysis_hiv)
+# create summary table
+hiv_summary_table <- baseline_analysis_hiv %>%
+  dplyr::select(
+    sex_work_12m, sex_work_ever,
+    homeless_12m, homeless_ever,
+    ethnic_roma_ever,
+    oat_12m, oat_ever,
+    gender, age_4cat, hiv_test_rslt
+  ) %>%
+  mutate(across(
+    c(
+      sex_work_12m, sex_work_ever,
+      homeless_12m, homeless_ever,
+      ethnic_roma_ever,
+      oat_12m, oat_ever,
+      gender, age_4cat
+    ),
+    as.character
+  )) %>%
+  pivot_longer(
+    cols = c(
+      sex_work_12m, sex_work_ever,
+      homeless_12m, homeless_ever,
+      ethnic_roma_ever,
+      oat_12m, oat_ever,
+      gender, age_4cat
+    ),
+    names_to = "Variable",
+    values_to = "Level"
+  ) %>%
+  group_by(Variable, Level, hiv_test_rslt) %>%
+  summarise(
+    Count = n(),
+    .groups = "drop"
+  ) %>%
+  pivot_wider(
+    names_from = hiv_test_rslt,
+    values_from = Count,
+    values_fill = 0
+  ) %>%
+  rename(
+    hiv_Negative = Negative,
+    hiv_Positive = Positive
+  ) %>%
+  mutate(
+    Total = hiv_Negative + hiv_Positive,
+    Proportion_Positive = (hiv_Positive / Total) * 100
+  ) %>%
+  group_by(Variable) %>%
+  mutate(
+    ref_level = case_when(
+      Variable == "age_4cat" ~ "<30",
+      Variable == "gender" ~ "Female",
+      TRUE ~ "0"
+    ),
+    ref_pos = hiv_Positive[Level == ref_level][1],
+    ref_neg = hiv_Negative[Level == ref_level][1],
+    OR = ifelse(Level == ref_level, 1, (hiv_Positive / hiv_Negative) / (ref_pos / ref_neg)),
+    logOR = ifelse(Level == ref_level, NA, log(OR)),
+    SE_logOR = ifelse(Level == ref_level, NA, sqrt(1/hiv_Positive + 1/hiv_Negative + 1/ref_pos + 1/ref_neg)),
+    CI_lower = ifelse(Level == ref_level, NA, exp(logOR - 1.96 * SE_logOR)),
+    CI_upper = ifelse(Level == ref_level, NA, exp(logOR + 1.96 * SE_logOR))
+  ) %>%
+  ungroup() %>%
+  select(-ref_level, -ref_pos, -ref_neg, -logOR, -SE_logOR)
 
-# # keep rows where appointment_seq equals 1
-# baseline_analysis_hiv <- baseline_analysis_hiv %>%
-#   filter(appointment_seq == 1)
+# format frequencies and ORs
+hiv_summary_table <- hiv_summary_table %>%
+  mutate(
+    num_perc = sprintf("%d (%.1f)", hiv_Positive, Proportion_Positive),
+    or_formatted = ifelse(
+      is.na(OR),
+      "",
+      sprintf("%.2f (%.2f-%.2f)", OR, CI_lower, CI_upper)
+    )
+  )
 
-# # subset romania_pwid_hiv to include only rows that match id, appointment_dte, and hiv_test_seq in romania_pwid_hiv_test
-# baseline_analysis_hiv <- baseline_analysis_hiv %>%
-#   mutate(
-#     sex_work_current = ifelse(is.na(sex_work_current), 0, sex_work_current),
-#     msm_current = ifelse(is.na(msm_current), 0, msm_current),
-#     homeless_current = ifelse(is.na(homeless_current), 0, homeless_current),
-#     ethnic_roma = ifelse(is.na(ethnic_roma), 0, ethnic_roma),
-#     gender = ifelse(gender == 2, 0, gender) 
-#   )
+# save the summary table
+write.csv(hiv_summary_table, "hiv_summary_table.csv", row.names = FALSE)
 
-# # ensure dob is in the correct Date format
-# baseline_analysis_hiv <- baseline_analysis_hiv %>%
-#   mutate(dob = as.Date(dob, format = "%d/%m/%Y")) %>%
-#   mutate(age_years = as.numeric(difftime(appointment_dte, dob, units = "days")) / 365.25) %>%
-#   mutate(age_bin = ifelse(age_years < 30, 0, 1))
+# tables stratified by gender
 
-# # change test results to 0 and 1
-# baseline_analysis_hiv <- baseline_analysis_hiv %>%
-#   mutate(hiv_test_rslt = case_when(
-#     hiv_test_rslt == 1 ~ 0,
-#     hiv_test_rslt == 2 ~ 1,
-#     TRUE ~ hiv_test_rslt
-#   ))
+# list of variables for tables
+vars_to_summarize <- c(
+  "sex_work_12m", "sex_work_ever",
+  "homeless_12m", "homeless_ever",
+  "ethnic_roma_ever",
+  "oat_12m", "oat_ever",
+  "age_4cat"
+)
 
-# # Filter the dataset to include only rows where hiv_test_rslt is 0 or 1
-# baseline_analysis_hiv <- baseline_analysis_hiv %>%
-#   filter(hiv_test_rslt %in% c(0, 1))
+# loop over gender and create tables
+gender_levels <- unique(baseline_analysis_hiv$gender)
 
-# # summary table with variables as rows and hiv_test_rslt levels as columns
-# hiv_summary_table <- baseline_analysis_hiv %>%
-#   dplyr::select(sex_work_current, homeless_current, ethnic_roma, gender, age_bin, hiv_test_rslt) %>%
-#   pivot_longer(
-#     cols = c(sex_work_current, homeless_current, ethnic_roma, gender, age_bin),
-#     names_to = "Variable",
-#     values_to = "Level"
-#   ) %>%
-#   group_by(Variable, Level, hiv_test_rslt) %>%
-#   summarise(
-#     Count = n(),
-#     .groups = "drop"
-#   ) %>%
-#   pivot_wider(
-#     names_from = hiv_test_rslt,
-#     values_from = Count,
-#     values_fill = 0  # Fill missing values with 0
-#   ) %>%
-#   rename(
-#     hiv_Negative = `0`,
-#     hiv_Positive = `1`
-#   ) %>%
-#   mutate(
-#     Total = hiv_Negative + hiv_Positive,
-#     Proportion_Positive = (hiv_Positive / Total) * 100
-#   )
+hiv_summary_tables_by_gender <- lapply(gender_levels, function(g) {
+  tab <- baseline_analysis_hiv %>%
+    filter(gender == g) %>%
+    dplyr::select(all_of(vars_to_summarize), hiv_test_rslt) %>%
+    mutate(across(all_of(vars_to_summarize), as.character)) %>%
+    pivot_longer(
+      cols = all_of(vars_to_summarize),
+      names_to = "Variable",
+      values_to = "Level"
+    ) %>%
+    group_by(Variable, Level, hiv_test_rslt) %>%
+    summarise(
+      Count = n(),
+      .groups = "drop"
+    ) %>%
+    pivot_wider(
+      names_from = hiv_test_rslt,
+      values_from = Count,
+      values_fill = 0
+    ) %>%
+    rename(
+      hiv_Negative = Negative,
+      hiv_Positive = Positive
+    ) %>%
+    mutate(
+      Total = hiv_Negative + hiv_Positive,
+      Proportion_Positive = (hiv_Positive / Total) * 100
+    ) %>%
+    group_by(Variable) %>%
+    mutate(
+      ref_level = case_when(
+        Variable == "age_4cat" ~ "<30",
+        TRUE ~ "0"
+      ),
+      ref_pos = hiv_Positive[Level == ref_level][1],
+      ref_neg = hiv_Negative[Level == ref_level][1],
+      OR = ifelse(Level == ref_level, 1, (hiv_Positive / hiv_Negative) / (ref_pos / ref_neg)),
+      logOR = ifelse(Level == ref_level, NA, log(OR)),
+      SE_logOR = ifelse(Level == ref_level, NA, sqrt(1/hiv_Positive + 1/hiv_Negative + 1/ref_pos + 1/ref_neg)),
+      CI_lower = ifelse(Level == ref_level, NA, exp(logOR - 1.96 * SE_logOR)),
+      CI_upper = ifelse(Level == ref_level, NA, exp(logOR + 1.96 * SE_logOR)),
+      num_perc = sprintf("%d (%.1f)", hiv_Positive, Proportion_Positive),
+      or_formatted = ifelse(
+        is.na(OR), "",
+        sprintf("%.2f (%.2f-%.2f)", OR, CI_lower, CI_upper)
+      ),
+      Gender = g
+    ) %>%
+    ungroup() %>%
+    select(-ref_level, -ref_pos, -ref_neg, -logOR, -SE_logOR)
+  tab
+})
 
-# # print and save the summary table
-# print(hiv_summary_table)
-# write.csv(hiv_summary_table, "hiv_summary_table.csv", row.names = FALSE)
-
-# # filter dataset to include only rows where gender == 1
-# baseline_analysis_hiv_gender_1 <- baseline_analysis_hiv %>%
-#   filter(gender == 1)
-
-# # summary table for msm_current with hiv_test_rslt levels as columns
-# msm_summary_table <- baseline_analysis_hiv_gender_1 %>%
-#   dplyr::select(msm_current, hiv_test_rslt) %>%
-#   group_by(msm_current, hiv_test_rslt) %>%
-#   summarise(
-#     Count = n(),
-#     .groups = "drop"
-#   ) %>%
-#   pivot_wider(
-#     names_from = hiv_test_rslt,
-#     values_from = Count,
-#     values_fill = 0
-#   ) %>%
-#   rename(
-#     hiv_Negative = `0`,
-#     hiv_Positive = `1`
-#   ) %>%
-#   mutate(
-#     Total = hiv_Negative + hiv_Positive,
-#     Proportion_Positive = (hiv_Positive / Total) * 100
-#   )
-
-# # print and save msm summary table
-# print(msm_summary_table)
-# write.csv(msm_summary_table, "msm_summary_table_gender_1.csv", row.names = FALSE)
+for (i in seq_along(gender_levels)) {
+  write.csv(
+    hiv_summary_tables_by_gender[[i]],
+    paste0("hiv_summary_table_gender_", gender_levels[i], ".csv"),
+    row.names = FALSE
+  )
+}
 
 # ## differences between excluded and included in longitudinal analysis
 
-# # remove rows where hiv test result is missing
-# romania_pwid_hiv_tb2 <- romania_pwid_raw[!is.na(romania_pwid_raw$hiv_test_rslt), ]
+# load data
+baseline_analysis_hiv <- read.csv("romania_pwid_hiv_bl.csv")
+romania_pwid_hiv_test <- read.csv("romania_pwid_hiv_test.csv", stringsAsFactors = FALSE)
 
-# # remove rows where hiv test result is indeterminate
-# romania_pwid_hiv_tb2 <- romania_pwid_hiv_tb2 %>%
-#   filter(!hiv_test_rslt == 3)
+# create included columns
+romania_pwid_hiv_test$included2 <- "Yes"
+baseline_analysis_hiv$included <- "No"
 
-# # create sequence of visits by ID
-# romania_pwid_hiv_tb2 <- romania_pwid_hiv_tb2 %>%
-#   group_by(id) %>%
-#   arrange(id, appointment_dte) %>%
-#   mutate(appointment_seq = row_number())
+# create included dataframe
+romania_pwid_hiv_test_included <- romania_pwid_hiv_test[, c("id", "included2")]
+romania_pwid_hiv_test_included <- romania_pwid_hiv_test_included[!duplicated(romania_pwid_hiv_test_included$id), ]
+baseline_analysis_hiv <- baseline_analysis_hiv %>%
+  left_join(romania_pwid_hiv_test_included, by = "id")
 
-# romania_pwid_hiv_tb2 <- ungroup(romania_pwid_hiv_tb2)
+# replace No includes with Yes and delete included2
+baseline_analysis_hiv$included[baseline_analysis_hiv$included2 == "Yes"] <- "Yes"
+baseline_analysis_hiv$included2 <- NULL
 
-# # remove IDs where hiv positive at baseline
-# ids_to_remove <- romania_pwid_hiv_tb2 %>%
-#   filter(appointment_seq == 1 & hiv_test_rslt == 2) %>%
-#   pull(id)
+# sequence by id 
+baseline_analysis_hiv <- baseline_analysis_hiv %>%
+  arrange(id, appointment_dte) %>%
+  group_by(id) %>%
+  mutate(id_seq = row_number()) %>%
+  ungroup()
 
-# romania_pwid_hiv_tb2 <- romania_pwid_hiv_tb2 %>%
-#   filter(!(id %in% ids_to_remove))
+# highest value in the id_seq column
+highest_id_seq <- baseline_analysis_hiv %>%
+  summarise(max_id_seq = max(id_seq, na.rm = TRUE))
+cat("Highest value in id_seq:\n")
+print(highest_id_seq)
 
-# # flag participants with multiple tests
-# romania_pwid_hiv_tb2 <- romania_pwid_hiv_tb2 %>%
-#   group_by(id) %>%
-#   arrange(id) %>%
-#   mutate(hiv_test_seq = row_number())
+# keep rows where appointment_seq equals 1
+baseline_analysis_hiv <- baseline_analysis_hiv %>%
+  filter(appointment_seq == 1)
+View(baseline_analysis_hiv)
 
-# # create indicator of multiple tests vs. single test
-# romania_pwid_hiv_tb2 <- romania_pwid_hiv_tb2 %>%
-#   group_by(id) %>%
-#   mutate(
-#     hiv_test_seq_max = max(hiv_test_seq, na.rm = TRUE),
-#     hiv_test_seq_bin = ifelse(hiv_test_seq_max == 1, 0, 1)
-#   ) %>%
-#   ungroup()
+# change test results to 0 and 1
+baseline_analysis_hiv <- baseline_analysis_hiv %>%
+  mutate(hiv_test_rslt = case_when(
+    hiv_test_rslt == 1 ~ 0,
+    hiv_test_rslt == 2 ~ 1,
+    TRUE ~ hiv_test_rslt
+  ))
 
-# # keep participants first test
-# romania_pwid_hiv_tb2 <- romania_pwid_hiv_tb2 %>%
-#   filter(hiv_test_seq == 1)
+# drop individuals who are positive at baseline
+baseline_analysis_hiv <- baseline_analysis_hiv %>%
+  filter(hiv_test_rslt == 0)
 
-# # summary table for hiv_test_seq_bin
-# hiv_test_seq_bin_summary <- romania_pwid_hiv_tb2 %>%
-#   group_by(hiv_test_seq_bin) %>%
-#   summarise(
-#     Count = n(),
-#     Proportion = (n() / nrow(romania_pwid_hiv_tb2)) * 100
-#   )
+# recode variables
+baseline_analysis_hiv <- baseline_analysis_hiv %>%
+  mutate(
+    sex_work_12m = ifelse(is.na(sex_work_current), 0, sex_work_current),
+    msm_12m = ifelse(is.na(msm_current), 0, msm_current),
+    homeless_12m = ifelse(is.na(homeless_current), 0, homeless_current),
+    ethnic_roma_ever = ifelse(is.na(ethnic_roma), 0, ethnic_roma),
+    gender = ifelse(gender == 2, 0, gender) 
+  )
 
-# # summary table
-# print(hiv_test_seq_bin_summary)
+# tables of included vs. excluded
+included_summary_table <- baseline_analysis_hiv %>%
+  dplyr::select(
+    sex_work_12m, sex_work_ever,
+    homeless_12m, homeless_ever,
+    ethnic_roma_ever,
+    oat_12m, oat_ever,
+    gender, age_4cat, included
+  ) %>%
+  mutate(across(
+    c(
+      sex_work_12m, sex_work_ever,
+      homeless_12m, homeless_ever,
+      ethnic_roma_ever,
+      oat_12m, oat_ever,
+      gender, age_4cat
+    ),
+    as.character
+  )) %>%
+  pivot_longer(
+    cols = c(
+      sex_work_12m, sex_work_ever,
+      homeless_12m, homeless_ever,
+      ethnic_roma_ever,
+      oat_12m, oat_ever,
+      gender, age_4cat
+    ),
+    names_to = "Variable",
+    values_to = "Level"
+  ) %>%
+  group_by(Variable, Level, included) %>%
+  summarise(
+    Count = n(),
+    .groups = "drop"
+  ) %>%
+  pivot_wider(
+    names_from = included,
+    values_from = Count,
+    values_fill = 0
+  ) %>%
+  rename(
+    Included_Yes = Yes,
+    Included_No = No
+  ) %>%
+  mutate(
+    Total = Included_Yes + Included_No,
+    Proportion_Included = (Included_Yes / Total) * 100
+  ) %>%
+  group_by(Variable) %>%
+  mutate(
+    ref_level = case_when(
+      Variable == "age_4cat" ~ "<30",
+      Variable == "gender" ~ "Female",
+      TRUE ~ "0"
+    ),
+    ref_yes = Included_Yes[Level == ref_level][1],
+    ref_no = Included_No[Level == ref_level][1],
+    OR = ifelse(Level == ref_level, 1, (Included_Yes / Included_No) / (ref_yes / ref_no)),
+    logOR = ifelse(Level == ref_level, NA, log(OR)),
+    SE_logOR = ifelse(Level == ref_level, NA, sqrt(1/Included_Yes + 1/Included_No + 1/ref_yes + 1/ref_no)),
+    CI_lower = ifelse(Level == ref_level, NA, exp(logOR - 1.96 * SE_logOR)),
+    CI_upper = ifelse(Level == ref_level, NA, exp(logOR + 1.96 * SE_logOR))
+  ) %>%
+  ungroup() %>%
+  select(-ref_level, -ref_yes, -ref_no, -logOR, -SE_logOR) %>%
+  mutate(
+    num_perc = sprintf("%d (%.1f)", Included_Yes, Proportion_Included),
+    or_formatted = ifelse(
+      is.na(OR),
+      "",
+      sprintf("%.2f (%.2f-%.2f)", OR, CI_lower, CI_upper)
+    )
+  )
 
-# # ensure dob is in the correct Date format
-# romania_pwid_hiv_tb2 <- romania_pwid_hiv_tb2 %>%
-#   mutate(dob = as.Date(dob, format = "%d/%m/%Y")) %>%
-#   mutate(age_years = as.numeric(difftime(appointment_dte, dob, units = "days")) / 365.25) %>%
-#   mutate(age_bin = ifelse(age_years < 30, 0, 1))
+write.csv(included_summary_table, "hiv_included_summary_table.csv", row.names = FALSE)
 
-# # create table of differences between included and excluded participants
+# tables stratified by gender
+gender_levels <- unique(baseline_analysis_hiv$gender)
 
-# # create a summary table
-# summary_table <- romania_pwid_hiv_tb2 %>%
-#   dplyr::select(sex_work_current, homeless_current, ethnic_roma, age_bin, gender, hiv_test_seq_bin) %>%
-#   pivot_longer(
-#     cols = c(sex_work_current, homeless_current, ethnic_roma, age_bin, gender),
-#     names_to = "Variable",
-#     values_to = "Level"
-#   ) %>%
-#   group_by(Variable, Level, hiv_test_seq_bin) %>%
-#   summarise(
-#     Count = n(),
-#     .groups = "drop"
-#   ) %>%
-#   pivot_wider(
-#     names_from = hiv_test_seq_bin,
-#     values_from = Count,
-#     values_fill = 0
-#   ) %>%
-#   rename(
-#     Single_Test = `0`,
-#     Multiple_Tests = `1`
-#   ) %>%
-#   mutate(
-#     Total = Single_Test + Multiple_Tests,
-#     Proportion_Multiple_Tests = (Multiple_Tests / Total) * 100
-#   )
+included_summary_tables_by_gender <- lapply(gender_levels, function(g) {
+  tab <- baseline_analysis_hiv %>%
+    filter(gender == g) %>%
+    dplyr::select(all_of(vars_to_summarize), included) %>%
+    mutate(across(all_of(vars_to_summarize), as.character)) %>%
+    pivot_longer(
+      cols = all_of(vars_to_summarize),
+      names_to = "Variable",
+      values_to = "Level"
+    ) %>%
+    group_by(Variable, Level, included) %>%
+    summarise(
+      Count = n(),
+      .groups = "drop"
+    ) %>%
+    pivot_wider(
+      names_from = included,
+      values_from = Count,
+      values_fill = 0
+    ) %>%
+    rename(
+      Included_Yes = Yes,
+      Included_No = No
+    ) %>%
+    mutate(
+      Total = Included_Yes + Included_No,
+      Proportion_Included = (Included_Yes / Total) * 100
+    ) %>%
+    group_by(Variable) %>%
+    mutate(
+      ref_level = case_when(
+        Variable == "age_4cat" ~ "<30",
+        TRUE ~ "0"
+      ),
+      ref_yes = Included_Yes[Level == ref_level][1],
+      ref_no = Included_No[Level == ref_level][1],
+      OR = ifelse(Level == ref_level, 1, (Included_Yes / Included_No) / (ref_yes / ref_no)),
+      logOR = ifelse(Level == ref_level, NA, log(OR)),
+      SE_logOR = ifelse(Level == ref_level, NA, sqrt(1/Included_Yes + 1/Included_No + 1/ref_yes + 1/ref_no)),
+      CI_lower = ifelse(Level == ref_level, NA, exp(logOR - 1.96 * SE_logOR)),
+      CI_upper = ifelse(Level == ref_level, NA, exp(logOR + 1.96 * SE_logOR)),
+      num_perc = sprintf("%d (%.1f)", Included_Yes, Proportion_Included),
+      or_formatted = ifelse(
+        is.na(OR), "",
+        sprintf("%.2f (%.2f-%.2f)", OR, CI_lower, CI_upper)
+      ),
+      Gender = g
+    ) %>%
+    ungroup() %>%
+    select(-ref_level, -ref_yes, -ref_no, -logOR, -SE_logOR)
+  tab
+})
 
-# # print and save summary table
-# print(summary_table)
-# write.csv(summary_table, "hiv_test_seq_bin_summary_table.csv", row.names = FALSE)
+for (i in seq_along(gender_levels)) {
+  write.csv(
+    included_summary_tables_by_gender[[i]],
+    paste0("hiv_included_summary_table_gender_", gender_levels[i], ".csv"),
+    row.names = FALSE
+  )
+}
 
 ## cox risk factor analysis
 
