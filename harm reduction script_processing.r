@@ -487,7 +487,7 @@ p_quarter3 <- ggplot2::ggplot(quarter_three_df,
   ggplot2::geom_line(linewidth = 1) +
   ggplot2::geom_point(size = 2) +
   ggplot2::scale_x_date(breaks = quarter_breaks, labels = quarter_labels, expand = ggplot2::expansion(mult = c(0.01, 0.01))) +
-  ggplot2::scale_y_continuous(labels = scales::comma) +
+  ggplot2::scale_y_continuous(labels = scales::comma, breaks = scales::breaks_width(50000)) +
   ggplot2::labs(title = "Quarterly totals: syringes distributed vs recovered",
                 x = "Quarter", y = "Total count", color = "Metric", linetype = "Metric") +
   ggplot2::theme_classic(base_size = 12) +
@@ -662,12 +662,12 @@ p_quarter_syringe_usage
 
 # Save all figures
 if (!dir.exists("figures")) dir.create("figures")
-ggplot2::ggsave("figures/yearly_syringes_recovered_condoms.png", plot = p_yearly3, width = 14, height = 5.5, units = "in", dpi = 300, bg = "white")
-ggplot2::ggsave("figures/yearly_syringes_recovered_condoms.pdf", plot = p_yearly3, width = 14, height = 5.5, units = "in", bg = "white")
-ggplot2::ggsave("figures/halfyear_syringes_recovered_condoms.png", plot = p_half3, width = 14, height = 5.5, units = "in", dpi = 300, bg = "white")
-ggplot2::ggsave("figures/halfyear_syringes_recovered_condoms.pdf", plot = p_half3, width = 14, height = 5.5, units = "in", bg = "white")
-ggplot2::ggsave("figures/quarterly_syringes_recovered_condoms.png", plot = p_quarter3, width = 14, height = 5.5, units = "in", dpi = 300, bg = "white")
-ggplot2::ggsave("figures/quarterly_syringes_recovered_condoms.pdf", plot = p_quarter3, width = 14, height = 5.5, units = "in", bg = "white")
+ggplot2::ggsave("figures/yearly_syringes_recovered.png", plot = p_yearly3, width = 14, height = 5.5, units = "in", dpi = 300, bg = "white")
+ggplot2::ggsave("figures/yearly_syringes_recovered.pdf", plot = p_yearly3, width = 14, height = 5.5, units = "in", bg = "white")
+ggplot2::ggsave("figures/halfyear_syringes_recovered.png", plot = p_half3, width = 14, height = 5.5, units = "in", dpi = 300, bg = "white")
+ggplot2::ggsave("figures/halfyear_syringes_recovered.pdf", plot = p_half3, width = 14, height = 5.5, units = "in", bg = "white")
+ggplot2::ggsave("figures/quarterly_syringes_recovered.png", plot = p_quarter3, width = 14, height = 5.5, units = "in", dpi = 300, bg = "white")
+ggplot2::ggsave("figures/quarterly_syringes_recovered.pdf", plot = p_quarter3, width = 14, height = 5.5, units = "in", bg = "white")
 ggplot2::ggsave("figures/bbv_positivity_yearly.png", plot = bbv_positivity_yearly, width = 14, height = 5.5, units = "in", dpi = 300, bg = "white")
 ggplot2::ggsave("figures/bbv_positivity_yearly.pdf", plot = bbv_positivity_yearly, width = 14, height = 5.5, units = "in", bg = "white")
 ggplot2::ggsave("figures/bbv_positivity_halfyear.png", plot = bbv_positivity_halfyear, width = 14, height = 5.5, units = "in", dpi = 300, bg = "white")
