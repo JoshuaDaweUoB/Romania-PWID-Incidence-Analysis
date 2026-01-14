@@ -699,4 +699,5 @@ ggplot2::ggsave("figures/service_usage_syringes_halfyear.pdf", plot = p_half_syr
 ggplot2::ggsave("figures/service_usage_syringes_quarterly.png", plot = p_quarter_syringe_usage, width = 14, height = 5.5, units = "in", dpi = 300, bg = "white")
 ggplot2::ggsave("figures/service_usage_syringes_quarterly.pdf", plot = p_quarter_syringe_usage, width = 14, height = 5.5, units = "in", bg = "white")
 
-
+# save quarterly data
+write_xlsx(quarter_df, "quarterly_data cleaned.xlsx")
