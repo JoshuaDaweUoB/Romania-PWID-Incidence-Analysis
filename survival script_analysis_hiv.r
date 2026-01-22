@@ -1,11 +1,11 @@
 ## load packages
-pacman::p_load(tidyr, withr, lubridate, MASS, writexl, readxl, arsenal, epitools, survival, broom, ggplot2, dplyr)
+pacman::p_load(tidyr, withr, lubridate, MASS, writexl, readxl, arsenal, survival, broom, ggplot2, dplyr)
 
 ## set wd
 setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/Romania PWID/data")
 
-# ## Baseline prevalence and predictors of hiv infection
-
+## Baseline prevalence and predictors of hiv infection
+ 
 # load data
 baseline_analysis_hiv <- read.csv("romania_pwid_hiv_bl.csv")
 
@@ -29,9 +29,6 @@ baseline_analysis_hiv <- baseline_analysis_hiv %>%
 # recode variables
 baseline_analysis_hiv <- baseline_analysis_hiv %>%
   mutate(
-    sex_work_12m = ifelse(is.na(sex_work_current), 0, sex_work_current),
-    msm_12m = ifelse(is.na(msm_current), 0, msm_current),
-    homeless_12m = ifelse(is.na(homeless_current), 0, homeless_current),
     ethnic_roma_ever = ifelse(is.na(ethnic_roma), 0, ethnic_roma),
     gender = ifelse(gender == 2, 0, gender) 
   )
@@ -51,30 +48,27 @@ print(table1, showAllLevels = TRUE)
 
 # create summary table
 hiv_summary_table <- baseline_analysis_hiv %>%
+  mutate(
+    test_year = as.character(lubridate::year(as.Date(hiv_test_dte)))
+  ) %>%
   dplyr::select(
-    sex_work_12m, sex_work_ever,
-    homeless_12m, homeless_ever,
     ethnic_roma_ever,
-    oat_12m, oat_ever,
-    gender, age_4cat, hiv_test_rslt
+    oat_ever,
+    gender, age_4cat, test_year, hiv_test_rslt
   ) %>%
   mutate(across(
     c(
-      sex_work_12m, sex_work_ever,
-      homeless_12m, homeless_ever,
       ethnic_roma_ever,
-      oat_12m, oat_ever,
+      oat_ever,
       gender, age_4cat
     ),
     as.character
   )) %>%
   pivot_longer(
     cols = c(
-      sex_work_12m, sex_work_ever,
-      homeless_12m, homeless_ever,
       ethnic_roma_ever,
-      oat_12m, oat_ever,
-      gender, age_4cat
+      oat_ever,
+      gender, age_4cat, test_year
     ),
     names_to = "Variable",
     values_to = "Level"
@@ -102,6 +96,7 @@ hiv_summary_table <- baseline_analysis_hiv %>%
     ref_level = case_when(
       Variable == "age_4cat" ~ "<30",
       Variable == "gender" ~ "Female",
+      Variable == "test_year" ~ "2013",
       TRUE ~ "0"
     ),
     ref_pos = hiv_Positive[Level == ref_level][1],
@@ -129,80 +124,74 @@ hiv_summary_table <- hiv_summary_table %>%
 # save the summary table
 write.csv(hiv_summary_table, "hiv_summary_table.csv", row.names = FALSE)
 
-# tables stratified by gender
 
-# list of variables for tables
-vars_to_summarize <- c(
-  "sex_work_12m", "sex_work_ever",
-  "homeless_12m", "homeless_ever",
-  "ethnic_roma_ever",
-  "oat_12m", "oat_ever",
-  "age_4cat"
+
+# hiv tests per year (all tests up to and including first positive per person)
+hiv_all_tests <- read.csv("romania_pwid_hiv_bl.csv")
+
+# Recode test results to 0/1
+hiv_all_tests <- hiv_all_tests %>%
+  mutate(hiv_test_rslt = case_when(
+    hiv_test_rslt == 1 ~ 0,
+    hiv_test_rslt == 2 ~ 1,
+    TRUE ~ hiv_test_rslt
+  ))
+
+# Sort by id and date, then keep only tests up to and including first positive
+hiv_all_tests <- hiv_all_tests %>%
+  arrange(id, hiv_test_dte) %>%
+  group_by(id) %>%
+  mutate(
+    cumulative_positive = cumsum(hiv_test_rslt),
+    # Keep if: never positive yet (cumulative = 0) OR this is the first positive (cumulative = 1 and result = 1)
+    keep_test = cumulative_positive == 0 | (cumulative_positive == 1 & hiv_test_rslt == 1)
+  ) %>%
+  filter(keep_test) %>%
+  ungroup() %>%
+  select(-cumulative_positive, -keep_test)
+
+# Create year from test date and summarise
+hiv_tests_by_year <- hiv_all_tests %>%
+  mutate(
+    hiv_test_dte = as.Date(hiv_test_dte),
+    test_year = year(hiv_test_dte)
+  ) %>%
+  filter(!is.na(test_year)) %>%
+  group_by(test_year) %>%
+  summarise(
+    n_tests = n(),
+    n_positive = sum(hiv_test_rslt == 1, na.rm = TRUE),
+    n_negative = sum(hiv_test_rslt == 0, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    prop_positive = (n_positive / n_tests) * 100,
+    n_perc_positive = sprintf("%d (%.1f%%)", n_positive, prop_positive)
+  )
+
+# Add total row
+hiv_tests_total <- hiv_tests_by_year %>%
+  summarise(
+    test_year = "Total",
+    n_tests = sum(n_tests),
+    n_positive = sum(n_positive),
+    n_negative = sum(n_negative)
+  ) %>%
+  mutate(
+    prop_positive = (n_positive / n_tests) * 100,
+    n_perc_positive = sprintf("%d (%.1f%%)", n_positive, prop_positive)
+  )
+
+hiv_tests_by_year <- bind_rows(
+  hiv_tests_by_year %>% mutate(test_year = as.character(test_year)),
+  hiv_tests_total
 )
 
-# loop over gender and create tables
-gender_levels <- unique(baseline_analysis_hiv$gender)
+print(hiv_tests_by_year)
 
-hiv_summary_tables_by_gender <- lapply(gender_levels, function(g) {
-  tab <- baseline_analysis_hiv %>%
-    filter(gender == g) %>%
-    dplyr::select(all_of(vars_to_summarize), hiv_test_rslt) %>%
-    mutate(across(all_of(vars_to_summarize), as.character)) %>%
-    pivot_longer(
-      cols = all_of(vars_to_summarize),
-      names_to = "Variable",
-      values_to = "Level"
-    ) %>%
-    group_by(Variable, Level, hiv_test_rslt) %>%
-    summarise(
-      Count = n(),
-      .groups = "drop"
-    ) %>%
-    pivot_wider(
-      names_from = hiv_test_rslt,
-      values_from = Count,
-      values_fill = 0
-    ) %>%
-    rename(
-      hiv_Negative = Negative,
-      hiv_Positive = Positive
-    ) %>%
-    mutate(
-      Total = hiv_Negative + hiv_Positive,
-      Proportion_Positive = (hiv_Positive / Total) * 100
-    ) %>%
-    group_by(Variable) %>%
-    mutate(
-      ref_level = case_when(
-        Variable == "age_4cat" ~ "<30",
-        TRUE ~ "0"
-      ),
-      ref_pos = hiv_Positive[Level == ref_level][1],
-      ref_neg = hiv_Negative[Level == ref_level][1],
-      OR = ifelse(Level == ref_level, 1, (hiv_Positive / hiv_Negative) / (ref_pos / ref_neg)),
-      logOR = ifelse(Level == ref_level, NA, log(OR)),
-      SE_logOR = ifelse(Level == ref_level, NA, sqrt(1/hiv_Positive + 1/hiv_Negative + 1/ref_pos + 1/ref_neg)),
-      CI_lower = ifelse(Level == ref_level, NA, exp(logOR - 1.96 * SE_logOR)),
-      CI_upper = ifelse(Level == ref_level, NA, exp(logOR + 1.96 * SE_logOR)),
-      num_perc = sprintf("%d (%.1f)", hiv_Positive, Proportion_Positive),
-      or_formatted = ifelse(
-        is.na(OR), "",
-        sprintf("%.2f (%.2f-%.2f)", OR, CI_lower, CI_upper)
-      ),
-      Gender = g
-    ) %>%
-    ungroup() %>%
-    select(-ref_level, -ref_pos, -ref_neg, -logOR, -SE_logOR)
-  tab
-})
+# Save the table
+write.csv(hiv_tests_by_year, "hiv_tests_by_year.csv", row.names = FALSE)
 
-for (i in seq_along(gender_levels)) {
-  write.csv(
-    hiv_summary_tables_by_gender[[i]],
-    paste0("hiv_summary_table_gender_", gender_levels[i], ".csv"),
-    row.names = FALSE
-  )
-}
 
 # ## differences between excluded and included in longitudinal analysis
 

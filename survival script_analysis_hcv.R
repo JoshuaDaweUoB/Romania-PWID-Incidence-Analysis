@@ -29,9 +29,6 @@ baseline_analysis_hcv <- baseline_analysis_hcv %>%
 # recode variables
 baseline_analysis_hcv <- baseline_analysis_hcv %>%
   mutate(
-    sex_work_12m = ifelse(is.na(sex_work_current), 0, sex_work_current),
-    msm_12m = ifelse(is.na(msm_current), 0, msm_current),
-    homeless_12m = ifelse(is.na(homeless_current), 0, homeless_current),
     ethnic_roma_ever = ifelse(is.na(ethnic_roma), 0, ethnic_roma),
     gender = ifelse(gender == 2, 0, gender) 
   )
@@ -51,30 +48,27 @@ print(table1, showAllLevels = TRUE)
 
 # create summary table
 hcv_summary_table <- baseline_analysis_hcv %>%
+  mutate(
+    test_year = as.character(lubridate::year(as.Date(hcv_test_dte)))
+  ) %>%
   dplyr::select(
-    sex_work_12m, sex_work_ever,
-    homeless_12m, homeless_ever,
     ethnic_roma_ever,
-    oat_12m, oat_ever,
-    gender, age_4cat, hcv_test_rslt
+    oat_ever,
+    gender, age_4cat, test_year, hcv_test_rslt
   ) %>%
   mutate(across(
     c(
-      sex_work_12m, sex_work_ever,
-      homeless_12m, homeless_ever,
       ethnic_roma_ever,
-      oat_12m, oat_ever,
+      oat_ever,
       gender, age_4cat
     ),
     as.character
   )) %>%
   pivot_longer(
     cols = c(
-      sex_work_12m, sex_work_ever,
-      homeless_12m, homeless_ever,
       ethnic_roma_ever,
-      oat_12m, oat_ever,
-      gender, age_4cat
+      oat_ever,
+      gender, age_4cat, test_year
     ),
     names_to = "Variable",
     values_to = "Level"
@@ -102,6 +96,7 @@ hcv_summary_table <- baseline_analysis_hcv %>%
     ref_level = case_when(
       Variable == "age_4cat" ~ "<30",
       Variable == "gender" ~ "Female",
+      Variable == "test_year" ~ "2013",
       TRUE ~ "0"
     ),
     ref_pos = HCV_Positive[Level == ref_level][1],
@@ -129,80 +124,71 @@ hcv_summary_table <- hcv_summary_table %>%
 # save the summary table
 write.csv(hcv_summary_table, "hcv_summary_table.csv", row.names = FALSE)
 
-# tables stratified by gender
+# HCV tests per year (all tests up to and including first positive per person)
+hcv_all_tests <- read.csv("romania_pwid_hcv_bl.csv")
 
-# list of variables for tables
-vars_to_summarize <- c(
-  "sex_work_12m", "sex_work_ever",
-  "homeless_12m", "homeless_ever",
-  "ethnic_roma_ever",
-  "oat_12m", "oat_ever",
-  "age_4cat"
+# Recode test results to 0/1
+hcv_all_tests <- hcv_all_tests %>%
+  mutate(hcv_test_rslt = case_when(
+    hcv_test_rslt == 1 ~ 0,
+    hcv_test_rslt == 2 ~ 1,
+    TRUE ~ hcv_test_rslt
+  ))
+
+# Sort by id and date, then keep only tests up to and including first positive
+hcv_all_tests <- hcv_all_tests %>%
+  arrange(id, hcv_test_dte) %>%
+  group_by(id) %>%
+  mutate(
+    cumulative_positive = cumsum(hcv_test_rslt),
+    # Keep if: never positive yet (cumulative = 0) OR this is the first positive (cumulative = 1 and result = 1)
+    keep_test = cumulative_positive == 0 | (cumulative_positive == 1 & hcv_test_rslt == 1)
+  ) %>%
+  filter(keep_test) %>%
+  ungroup() %>%
+  select(-cumulative_positive, -keep_test)
+
+# Create year from test date and summarise
+hcv_tests_by_year <- hcv_all_tests %>%
+  mutate(
+    hcv_test_dte = as.Date(hcv_test_dte),
+    test_year = year(hcv_test_dte)
+  ) %>%
+  filter(!is.na(test_year)) %>%
+  group_by(test_year) %>%
+  summarise(
+    n_tests = n(),
+    n_positive = sum(hcv_test_rslt == 1, na.rm = TRUE),
+    n_negative = sum(hcv_test_rslt == 0, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    prop_positive = (n_positive / n_tests) * 100,
+    n_perc_positive = sprintf("%d (%.1f%%)", n_positive, prop_positive)
+  )
+
+# Add total row
+hcv_tests_total <- hcv_tests_by_year %>%
+  summarise(
+    test_year = "Total",
+    n_tests = sum(n_tests),
+    n_positive = sum(n_positive),
+    n_negative = sum(n_negative)
+  ) %>%
+  mutate(
+    prop_positive = (n_positive / n_tests) * 100,
+    n_perc_positive = sprintf("%d (%.1f%%)", n_positive, prop_positive)
+  )
+
+hcv_tests_by_year <- bind_rows(
+  hcv_tests_by_year %>% mutate(test_year = as.character(test_year)),
+  hcv_tests_total
 )
 
-# loop over gender and create tables
-gender_levels <- unique(baseline_analysis_hcv$gender)
+print(hcv_tests_by_year)
 
-hcv_summary_tables_by_gender <- lapply(gender_levels, function(g) {
-  tab <- baseline_analysis_hcv %>%
-    filter(gender == g) %>%
-    dplyr::select(all_of(vars_to_summarize), hcv_test_rslt) %>%
-    mutate(across(all_of(vars_to_summarize), as.character)) %>%
-    pivot_longer(
-      cols = all_of(vars_to_summarize),
-      names_to = "Variable",
-      values_to = "Level"
-    ) %>%
-    group_by(Variable, Level, hcv_test_rslt) %>%
-    summarise(
-      Count = n(),
-      .groups = "drop"
-    ) %>%
-    pivot_wider(
-      names_from = hcv_test_rslt,
-      values_from = Count,
-      values_fill = 0
-    ) %>%
-    rename(
-      HCV_Negative = Negative,
-      HCV_Positive = Positive
-    ) %>%
-    mutate(
-      Total = HCV_Negative + HCV_Positive,
-      Proportion_Positive = (HCV_Positive / Total) * 100
-    ) %>%
-    group_by(Variable) %>%
-    mutate(
-      ref_level = case_when(
-        Variable == "age_4cat" ~ "<30",
-        TRUE ~ "0"
-      ),
-      ref_pos = HCV_Positive[Level == ref_level][1],
-      ref_neg = HCV_Negative[Level == ref_level][1],
-      OR = ifelse(Level == ref_level, 1, (HCV_Positive / HCV_Negative) / (ref_pos / ref_neg)),
-      logOR = ifelse(Level == ref_level, NA, log(OR)),
-      SE_logOR = ifelse(Level == ref_level, NA, sqrt(1/HCV_Positive + 1/HCV_Negative + 1/ref_pos + 1/ref_neg)),
-      CI_lower = ifelse(Level == ref_level, NA, exp(logOR - 1.96 * SE_logOR)),
-      CI_upper = ifelse(Level == ref_level, NA, exp(logOR + 1.96 * SE_logOR)),
-      num_perc = sprintf("%d (%.1f)", HCV_Positive, Proportion_Positive),
-      or_formatted = ifelse(
-        is.na(OR), "",
-        sprintf("%.2f (%.2f-%.2f)", OR, CI_lower, CI_upper)
-      ),
-      Gender = g
-    ) %>%
-    ungroup() %>%
-    select(-ref_level, -ref_pos, -ref_neg, -logOR, -SE_logOR)
-  tab
-})
-
-for (i in seq_along(gender_levels)) {
-  write.csv(
-    hcv_summary_tables_by_gender[[i]],
-    paste0("hcv_summary_table_gender_", gender_levels[i], ".csv"),
-    row.names = FALSE
-  )
-}
+# Save the table
+write.csv(hcv_tests_by_year, "hcv_tests_by_year.csv", row.names = FALSE)
 
 # ## differences between excluded and included in longitudinal analysis
 

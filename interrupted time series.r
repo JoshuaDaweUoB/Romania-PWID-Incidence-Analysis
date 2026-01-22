@@ -36,7 +36,7 @@ quarter_df <- quarter_df %>%
 # ==============================
 # MODEL AND PLOT FOR total_syringes
 # ==============================
-model_syringes <- glm(total_syringes ~ Quarter_seq + interruption + Time_since_interrupt + post:Quarter_after,
+model_syringes <- glm(total_syringes ~ Quarter_seq + interruption + post + post:Quarter_after,
                       family = poisson(link = "log"), data = quarter_df)
 
 # Robust standard errors
@@ -69,7 +69,7 @@ ggsave("interrupted_time_series_total_syringes.png", plot_syringes)
 # ==============================
 # MODEL AND PLOT FOR total_recovered
 # ==============================
-model_recovered <- glm(total_recovered ~ Quarter_seq + interruption + Time_since_interrupt + post:Quarter_after,
+model_recovered <- glm(total_recovered ~ Quarter_seq + interruption + post + post:Quarter_after,
                        family = poisson(link = "log"), data = quarter_df)
 
 # Robust standard errors
@@ -131,7 +131,7 @@ ggsave("interrupted_time_series_combined.png", plot_combined, width = 12, height
 # ==============================
 # MODEL AND PLOT FOR unique_ids_syringes
 # ==============================
-model_unique_ids <- glm(unique_ids_syringes ~ Quarter_seq + interruption + Time_since_interrupt + post:Quarter_after,
+model_unique_ids <- glm(unique_ids_syringes ~ Quarter_seq + interruption + post + post:Quarter_after,
                         family = poisson(link = "log"), data = quarter_df)
 
 # Robust standard errors
@@ -163,9 +163,9 @@ ggsave("interrupted_time_series_unique_ids_syringes.png", plot_unique_ids)
 # ==============================
 # MODEL AND PLOT FOR total_visits_syringe
 # ==============================
-model_visits <- glm(total_visits_syringe ~ Quarter_seq + interruption + Time_since_interrupt + post:Quarter_after,
+model_visits <- glm(total_visits_syringe ~ Quarter_seq + interruption + post + post:Quarter_after,
                     family = poisson(link = "log"), data = quarter_df)
-
+                                        
 # Robust standard errors
 model_visits_robust <- coeftest(model_visits, vcov = vcovHC(model_visits, type = "HC1"))
 print(model_visits_robust)
@@ -191,6 +191,164 @@ plot_visits <- ggplot(quarter_df, aes(x = Quarter_seq)) +
   theme(panel.grid = element_blank())
 
 ggsave("interrupted_time_series_total_visits_syringe.png", plot_visits)
+
+
+# ==============================
+# CREATE YEARLY SUMMARY TABLE (with correct unique counts)
+# ==============================
+
+# First, load and prepare raw data for 2016-2022 (to match ITS analysis period)
+romania_pwid_raw <- readxl::read_excel("ARAS DATA IDU 2013-2022.xlsx")
+
+# Prepare data with year and syringe flag
+raw_syringe <- romania_pwid_raw %>%
+  mutate(
+    appointment_dte = as.Date(appointment_dte),
+    Year = lubridate::year(appointment_dte),
+    got_syringes = (!is.na(syringes_distributed_1ml) & syringes_distributed_1ml > 0) |
+                   (!is.na(syringes_distributed_2ml) & syringes_distributed_2ml > 0)
+  ) %>%
+  filter(Year >= 2016 & Year <= 2022, got_syringes == TRUE)
+
+# TRUE overall unique count (each person counted once across entire period)
+overall_unique_individuals <- n_distinct(raw_syringe$id)
+
+# Yearly unique counts (person counted once per year, may appear in multiple years)
+yearly_unique <- raw_syringe %>%
+  group_by(Year) %>%
+  summarise(unique_individuals = n_distinct(id))
+
+# Get other yearly totals from quarter_df (already aggregated)
+yearly_summary <- quarter_df %>%
+  mutate(Year = as.numeric(substr(Quarter, 1, 4))) %>%
+  filter(Year >= 2016 & Year <= 2022) %>%
+  group_by(Year) %>%
+  summarise(
+    visits = sum(total_visits_syringe, na.rm = TRUE),
+    distributed = sum(total_syringes, na.rm = TRUE),
+    returned = sum(total_recovered, na.rm = TRUE)
+  ) %>%
+  left_join(yearly_unique, by = "Year") %>%
+  mutate(syr_per_person = distributed / unique_individuals)
+
+# Overall totals
+overall <- data.frame(
+  individuals = overall_unique_individuals,
+  visits = sum(yearly_summary$visits),
+  distributed = sum(yearly_summary$distributed),
+  returned = sum(yearly_summary$returned)
+) %>%
+  mutate(syr_per_person = distributed / individuals)
+
+# Function to format numbers with commas
+format_n <- function(n) {
+  format(n, big.mark = ",")
+}
+
+# Build the table
+summary_table <- data.frame(
+  Outcome = c("Individuals accessing service*", 
+              "Total visits to service", 
+              "Syringes distributed by service", 
+              "Syringes returned to service",
+              "Number of syringes per person accessing service"),
+  Overall = c(
+    format_n(overall$individuals),
+    format_n(overall$visits),
+    format_n(overall$distributed),
+    format_n(overall$returned),
+    round(overall$syr_per_person, 1)
+  )
+)
+
+# Add yearly columns
+for (yr in 2016:2022) {
+  yr_data <- yearly_summary %>% filter(Year == yr)
+  summary_table[[paste0("Y", yr)]] <- c(
+    format_n(yr_data$unique_individuals),
+    format_n(yr_data$visits),
+    format_n(yr_data$distributed),
+    format_n(yr_data$returned),
+    round(yr_data$syr_per_person, 1)
+  )
+}
+
+# Rename columns
+names(summary_table) <- c("Outcome", "Overall", 
+                          "2016", "2017", "2018", 
+                          "2019", "2020", "2021", "2022")
+
+# View result
+print(summary_table)
+
+# Export to Excel
+write_xlsx(summary_table, "syringe_service_yearly_summary.xlsx")
+
+## make its table
+extract_its_table <- function(model, outcome_label) {
+
+  ct <- coeftest(model, vcov = vcovHC(model, type = "HC1"))
+  rob <- data.frame(
+    term = rownames(ct),
+    beta = ct[, 1],
+    se = ct[, 2]
+  )
+
+  # Helper: count ratio (95% CI)
+  cr_ci <- function(beta, se) {
+    cr  <- exp(beta)
+    lci <- exp(beta - 1.96 * se)
+    uci <- exp(beta + 1.96 * se)
+    sprintf("%.3f (%.3f–%.3f)", cr, lci, uci)
+  }
+
+  # Extract ITS coefficients
+  b1 <- rob[rob$term == "Quarter_seq", ]
+  b3 <- rob[rob$term == "post:Quarter_after", ]
+  b4 <- rob[rob$term == "post", ]
+
+  if (nrow(b1) == 0 || nrow(b3) == 0) {
+    stop("Expected ITS coefficients not found in model")
+  }
+
+  # Post-COVID trend = β1 + β3
+  beta_post <- b1$beta + b3$beta
+  se_post   <- sqrt(b1$se^2 + b3$se^2)
+
+  # Handle case where post coefficient may not exist
+  post_reopen <- if (nrow(b4) > 0) cr_ci(b4$beta, b4$se) else "Not in model"
+
+  data.frame(
+    Outcome = outcome_label,
+    `Pre-COVID quarterly trends (β1)` =
+      cr_ci(b1$beta, b1$se),
+    `Immediate change post-reopening (β4)` =
+      post_reopen,
+    `Post-COVID quarterly trends (β1 + β3)` =
+      cr_ci(beta_post, se_post),
+    `Difference pre- vs post-COVID trends (β3)` =
+      cr_ci(b3$beta, b3$se),
+    stringsAsFactors = FALSE
+  )
+}
+
+its_results <- dplyr::bind_rows(
+  extract_its_table(model_unique_ids, "Individuals accessing service"),
+  extract_its_table(model_visits, "Total visits to service"),
+  extract_its_table(model_syringes, "Syringes distributed by service"),
+  extract_its_table(model_recovered, "Syringes returned to service")
+)
+
+write_xlsx(its_results, "ITS_results_summary.xlsx")
+
+
+
+
+
+
+
+
+
 
 # ==============================
 # COMBINED PLOT FOR unique_ids_syringes AND total_visits_syringe
