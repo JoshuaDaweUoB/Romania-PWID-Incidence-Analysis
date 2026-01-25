@@ -824,8 +824,12 @@ results_df_two_yearly_rubin_hcv <- read.csv("results_df_two_yearly_rubin_hcv.csv
 results_df_two_yearly_rubin_hcv$Mean_HCV_infections <- as.numeric(results_df_two_yearly_rubin_hcv$Mean_HCV_infections)
 results_df_two_yearly_rubin_hcv$Mean_person_years <- as.numeric(results_df_two_yearly_rubin_hcv$Mean_person_years)
 
-# assign 2017-2018 as reference category
-ref_idx <- which(results_df_two_yearly_rubin_hcv$Interval == "2017-2018")
+# assign 2013-2014 as reference category
+ref_idx <- which(results_df_two_yearly_rubin_hcv$Interval == "2013-2014")
+
+cases <- results_df_two_yearly_rubin_hcv$Mean_HCV_infections
+py <- results_df_two_yearly_rubin_hcv$Mean_person_years
+
 ref_cases <- cases[ref_idx]
 ref_py <- py[ref_idx]
 
@@ -857,6 +861,13 @@ for (i in seq_along(cases)) {
     rr_exact[i, 2:4] <- calculate_rr(cases[i], py[i], ref_cases, ref_py)
   }
 }
+
+# format RR
+rr_exact$RR_95CI <- ifelse(
+  is.na(rr_exact$Rate_Ratio),
+  NA,
+  sprintf("%.2f (%.2f-%.2f)", rr_exact$Rate_Ratio, rr_exact$Lower_95CI, rr_exact$Upper_95CI)
+)
 
 # combine results
 results_df_two_yearly_rubin_hcv <- cbind(results_df_two_yearly_rubin_hcv, rr_exact[, -1])

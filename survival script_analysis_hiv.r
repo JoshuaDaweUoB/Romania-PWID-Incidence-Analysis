@@ -124,8 +124,6 @@ hiv_summary_table <- hiv_summary_table %>%
 # save the summary table
 write.csv(hiv_summary_table, "hiv_summary_table.csv", row.names = FALSE)
 
-
-
 # hiv tests per year (all tests up to and including first positive per person)
 hiv_all_tests <- read.csv("romania_pwid_hiv_bl.csv")
 
@@ -192,12 +190,12 @@ print(hiv_tests_by_year)
 # Save the table
 write.csv(hiv_tests_by_year, "hiv_tests_by_year.csv", row.names = FALSE)
 
-
 # ## differences between excluded and included in longitudinal analysis
 
 # load data
 baseline_analysis_hiv <- read.csv("romania_pwid_hiv_bl.csv")
 romania_pwid_hiv_test <- read.csv("romania_pwid_hiv_test.csv", stringsAsFactors = FALSE)
+n_distinct(romania_pwid_hiv_test$id)
 
 # create included columns
 romania_pwid_hiv_test$included2 <- "Yes"
