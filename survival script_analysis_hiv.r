@@ -885,3 +885,56 @@ hiv_incidence_plot_rubin <- ggplot(results_df_two_yearly_rubin_hiv, aes(x = Inte
 
 ggsave("plots/hiv_incidence_plot_rubin.png", plot = hiv_incidence_plot_rubin, width = 10, height = 6, dpi = 300)
 
+
+# Load both datasets
+results_hiv <- read.csv("results_df_two_yearly_rubin_hiv.csv", stringsAsFactors = FALSE)
+results_hcv <- read.csv("results_df_two_yearly_rubin_hcv.csv", stringsAsFactors = FALSE)
+
+# Add disease identifier and combine
+results_hiv$Disease <- "HIV"
+results_hcv$Disease <- "HCV"
+
+# Rename infection columns to same name
+names(results_hiv)[names(results_hiv) == "Mean_hiv_infections"] <- "Mean_infections"
+names(results_hcv)[names(results_hcv) == "Mean_HCV_infections"] <- "Mean_infections"
+
+# Now combine
+combined_df <- rbind(results_hiv, results_hcv)
+
+rm(combined_incidence_plot_rubin)
+
+# Combined plot
+combined_incidence_plot_rubin <- ggplot(
+  combined_df,
+  aes(x = Interval,
+      y = Incidence_rate,
+      group = Disease)
+) +
+  geom_line(aes(linetype = Disease),
+            color = "black",
+            linewidth = 0.8) +
+  geom_point(shape = 18,
+             size = 3,
+             color = "black") +
+  geom_errorbar(aes(ymin = Lower_bound,
+                    ymax = Upper_bound),
+                width = 0.2,
+                color = "black") +
+  scale_linetype_manual(values = c("HIV" = "solid",
+                                   "HCV" = "dashed")) +
+  theme_minimal(base_size = 14) +
+  labs(
+    x = "Two-yearly Interval",
+    y = "Mean Incidence Rate per 100 Person-Years",
+    linetype = "Disease"
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA),
+    legend.position = "bottom"
+  )
+
+ggsave("plots/combined_hiv_hcv_incidence_plot_rubin.png", plot = combined_incidence_plot, width = 10, height = 6, dpi = 300)
