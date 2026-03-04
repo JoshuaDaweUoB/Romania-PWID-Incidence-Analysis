@@ -901,6 +901,9 @@ names(results_hcv)[names(results_hcv) == "Mean_HCV_infections"] <- "Mean_infecti
 # Now combine
 combined_df <- rbind(results_hiv, results_hcv)
 
+# Remove the Overall row
+combined_df <- combined_df %>% filter(Interval != "Overall")
+
 rm(combined_incidence_plot_rubin)
 
 # Combined plot
@@ -937,4 +940,4 @@ combined_incidence_plot_rubin <- ggplot(
     legend.position = "bottom"
   )
 
-ggsave("plots/combined_hiv_hcv_incidence_plot_rubin.png", plot = combined_incidence_plot, width = 10, height = 6, dpi = 300)
+ggsave("plots/combined_hiv_hcv_incidence_plot_rubin.png", plot = combined_incidence_plot_rubin, width = 10, height = 6, dpi = 300)
