@@ -64,6 +64,7 @@ hcv_summary_table <- baseline_analysis_hcv %>%
     legal_12m,
     methadone_12m,
     polyconsumer_12m,
+    main_drug_injected_4cat,
     hcv_test_rslt
   ) %>%
   mutate(across(
@@ -79,7 +80,8 @@ hcv_summary_table <- baseline_analysis_hcv %>%
     heroin_12m,
     legal_12m,
     methadone_12m,
-    polyconsumer_12m
+    polyconsumer_12m,
+    main_drug_injected_4cat
     ),
     as.character
   )) %>%
@@ -97,7 +99,8 @@ hcv_summary_table <- baseline_analysis_hcv %>%
     heroin_12m,
     legal_12m,
     methadone_12m,
-    polyconsumer_12m
+    polyconsumer_12m,
+    main_drug_injected_4cat
     ),
     names_to = "Variable",
     values_to = "Level"
@@ -429,7 +432,7 @@ romania_pwid_hcv_test <- read.csv("romania_pwid_hcv_test.csv", stringsAsFactors 
 romania_pwid_hcv_test <- read.csv("romania_pwid_hcv_test.csv", stringsAsFactors = FALSE)
 
 # exposures
-exposure_vars <- c("oat_12m", "oat_ever", "sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever", "gender", "age_4cat", "syringe_1ml_ever", "syringe_2ml_ever", "drug_type_main", "heroin_12m", "legal_12m", "methadone_12m", "polyconsumer_12m", "syringes_1ml_12m_prior_5cat")
+exposure_vars <- c("oat_12m", "oat_ever", "sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever", "gender", "age_4cat", "syringe_1ml_ever", "syringe_2ml_ever", "drug_type_main", "heroin_12m", "legal_12m", "methadone_12m", "polyconsumer_12m", "syringes_1ml_12m_prior_5cat", "main_drug_injected_4cat")
 
 results_list <- list()
 
