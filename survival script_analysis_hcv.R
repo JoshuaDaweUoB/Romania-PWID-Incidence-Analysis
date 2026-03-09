@@ -51,24 +51,53 @@ hcv_summary_table <- baseline_analysis_hcv %>%
   mutate(
     test_year = as.character(lubridate::year(as.Date(hcv_test_dte)))
   ) %>%
-  dplyr::select(
+    dplyr::select(
     ethnic_roma_ever,
     oat_ever,
-    gender, age_4cat, test_year, hcv_test_rslt
+    gender, age_4cat,
+    test_year,
+    syringe_1ml_ever,
+    syringe_2ml_ever,
+    syringes_1ml_12m_prior_5cat,
+    drug_type_main,
+    heroin_12m,
+    legal_12m,
+    methadone_12m,
+    polyconsumer_12m,
+    hcv_test_rslt
   ) %>%
   mutate(across(
     c(
-      ethnic_roma_ever,
-      oat_ever,
-      gender, age_4cat
+    ethnic_roma_ever,
+    oat_ever,
+    gender,
+    age_4cat,
+    syringe_1ml_ever,
+    syringe_2ml_ever,
+    syringes_1ml_12m_prior_5cat,
+    drug_type_main,
+    heroin_12m,
+    legal_12m,
+    methadone_12m,
+    polyconsumer_12m
     ),
     as.character
   )) %>%
   pivot_longer(
     cols = c(
-      ethnic_roma_ever,
-      oat_ever,
-      gender, age_4cat, test_year
+    ethnic_roma_ever,
+    oat_ever,
+    gender,
+    age_4cat,
+    test_year,
+    syringe_1ml_ever,
+    syringe_2ml_ever,
+    syringes_1ml_12m_prior_5cat,
+    drug_type_main,
+    heroin_12m,
+    legal_12m,
+    methadone_12m,
+    polyconsumer_12m
     ),
     names_to = "Variable",
     values_to = "Level"
@@ -108,7 +137,7 @@ hcv_summary_table <- baseline_analysis_hcv %>%
     CI_upper = ifelse(Level == ref_level, NA, exp(logOR + 1.96 * SE_logOR))
   ) %>%
   ungroup() %>%
-  select(-ref_level, -ref_pos, -ref_neg, -logOR, -SE_logOR)
+  dplyr::select(-ref_level, -ref_pos, -ref_neg, -logOR, -SE_logOR)
 
 # format frequencies and ORs
 hcv_summary_table <- hcv_summary_table %>%
@@ -400,12 +429,12 @@ romania_pwid_hcv_test <- read.csv("romania_pwid_hcv_test.csv", stringsAsFactors 
 romania_pwid_hcv_test <- read.csv("romania_pwid_hcv_test.csv", stringsAsFactors = FALSE)
 
 # exposures
-exposure_vars <- c("oat_12m", "oat_ever", "sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever", "gender", "age_2cat")
+exposure_vars <- c("oat_12m", "oat_ever", "sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever", "gender", "age_4cat", "syringe_1ml_ever", "syringe_2ml_ever", "drug_type_main", "heroin_12m", "legal_12m", "methadone_12m", "polyconsumer_12m", "syringes_1ml_12m_prior_5cat")
 
 results_list <- list()
 
 # Relevel binary variables to factors with "No"/"Yes"
-binary_vars <- c("oat_12m", "oat_ever", "sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever")
+binary_vars <- c("oat_12m", "oat_ever", "sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever", "syringe_1ml_ever", "syringe_2ml_ever", "heroin_12m", "legal_12m", "methadone_12m", "polyconsumer_12m")
 for (var in binary_vars) {
   romania_pwid_hcv_test[[var]] <- factor(ifelse(romania_pwid_hcv_test[[var]] == 1, "Yes", "No"), levels = c("No", "Yes"))
 }
