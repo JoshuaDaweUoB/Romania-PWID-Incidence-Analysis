@@ -51,56 +51,30 @@ hcv_summary_table <- baseline_analysis_hcv %>%
   mutate(
     test_year = as.character(lubridate::year(as.Date(hcv_test_dte)))
   ) %>%
-    dplyr::select(
+  dplyr::select(
     ethnic_roma_ever,
     oat_ever,
-    gender, age_4cat,
-    test_year,
-    syringe_1ml_ever,
-    syringe_2ml_ever,
-    syringes_1ml_12m_prior_5cat,
-    drug_type_main,
-    heroin_12m,
-    legal_12m,
-    methadone_12m,
-    polyconsumer_12m,
-    main_drug_injected_4cat,
-    hcv_test_rslt
+    msm_12m, oat_12m, homeless_12m, sex_work_12m,
+    msm_ever, sex_work_ever, homeless_ever,
+    gender, age_4cat, test_year, hcv_test_rslt
   ) %>%
   mutate(across(
     c(
-    ethnic_roma_ever,
-    oat_ever,
-    gender,
-    age_4cat,
-    syringe_1ml_ever,
-    syringe_2ml_ever,
-    syringes_1ml_12m_prior_5cat,
-    drug_type_main,
-    heroin_12m,
-    legal_12m,
-    methadone_12m,
-    polyconsumer_12m,
-    main_drug_injected_4cat
+      ethnic_roma_ever,
+      oat_ever,
+      msm_12m, oat_12m, homeless_12m, sex_work_12m,
+      msm_ever, sex_work_ever, homeless_ever,
+      gender, age_4cat
     ),
     as.character
   )) %>%
   pivot_longer(
     cols = c(
-    ethnic_roma_ever,
-    oat_ever,
-    gender,
-    age_4cat,
-    test_year,
-    syringe_1ml_ever,
-    syringe_2ml_ever,
-    syringes_1ml_12m_prior_5cat,
-    drug_type_main,
-    heroin_12m,
-    legal_12m,
-    methadone_12m,
-    polyconsumer_12m,
-    main_drug_injected_4cat
+      ethnic_roma_ever,
+      oat_ever,
+      msm_12m, oat_12m, homeless_12m, sex_work_12m,
+      msm_ever, sex_work_ever, homeless_ever,
+      gender, age_4cat, test_year
     ),
     names_to = "Variable",
     values_to = "Level"
@@ -116,12 +90,12 @@ hcv_summary_table <- baseline_analysis_hcv %>%
     values_fill = 0
   ) %>%
   rename(
-    HCV_Negative = Negative,
-    HCV_Positive = Positive
+    hcv_Negative = Negative,
+    hcv_Positive = Positive
   ) %>%
   mutate(
-    Total = HCV_Negative + HCV_Positive,
-    Proportion_Positive = (HCV_Positive / Total) * 100
+    Total = hcv_Negative + hcv_Positive,
+    Proportion_Positive = (hcv_Positive / Total) * 100
   ) %>%
   group_by(Variable) %>%
   mutate(
@@ -131,21 +105,21 @@ hcv_summary_table <- baseline_analysis_hcv %>%
       Variable == "test_year" ~ "2013",
       TRUE ~ "0"
     ),
-    ref_pos = HCV_Positive[Level == ref_level][1],
-    ref_neg = HCV_Negative[Level == ref_level][1],
-    OR = ifelse(Level == ref_level, 1, (HCV_Positive / HCV_Negative) / (ref_pos / ref_neg)),
+    ref_pos = hcv_Positive[Level == ref_level][1],
+    ref_neg = hcv_Negative[Level == ref_level][1],
+    OR = ifelse(Level == ref_level, 1, (hcv_Positive / hcv_Negative) / (ref_pos / ref_neg)),
     logOR = ifelse(Level == ref_level, NA, log(OR)),
-    SE_logOR = ifelse(Level == ref_level, NA, sqrt(1/HCV_Positive + 1/HCV_Negative + 1/ref_pos + 1/ref_neg)),
+    SE_logOR = ifelse(Level == ref_level, NA, sqrt(1/hcv_Positive + 1/hcv_Negative + 1/ref_pos + 1/ref_neg)),
     CI_lower = ifelse(Level == ref_level, NA, exp(logOR - 1.96 * SE_logOR)),
     CI_upper = ifelse(Level == ref_level, NA, exp(logOR + 1.96 * SE_logOR))
   ) %>%
   ungroup() %>%
-  dplyr::select(-ref_level, -ref_pos, -ref_neg, -logOR, -SE_logOR)
+  select(-ref_level, -ref_pos, -ref_neg, -logOR, -SE_logOR)
 
 # format frequencies and ORs
 hcv_summary_table <- hcv_summary_table %>%
   mutate(
-    num_perc = sprintf("%d (%.1f)", HCV_Positive, Proportion_Positive),
+    num_perc = sprintf("%d (%.1f)", hcv_Positive, Proportion_Positive),
     or_formatted = ifelse(
       is.na(OR),
       "",
@@ -155,6 +129,93 @@ hcv_summary_table <- hcv_summary_table %>%
 
 # save the summary table
 write.csv(hcv_summary_table, "hcv_summary_table.csv", row.names = FALSE)
+
+# create summary table (stratified by sex)
+hcv_summary_table <- baseline_analysis_hcv %>%
+  mutate(
+    test_year = as.character(lubridate::year(as.Date(hcv_test_dte)))
+  ) %>%
+  dplyr::select(
+    ethnic_roma_ever,
+    oat_ever,
+    msm_12m, oat_12m, homeless_12m, sex_work_12m,
+    msm_ever, sex_work_ever, homeless_ever,
+    gender, age_4cat, test_year, hcv_test_rslt
+  ) %>%
+  mutate(across(
+    c(
+      ethnic_roma_ever,
+      oat_ever,
+      msm_12m, oat_12m, homeless_12m, sex_work_12m,
+      msm_ever, sex_work_ever, homeless_ever,
+      gender, age_4cat
+    ),
+    as.character
+  )) %>%
+  pivot_longer(
+    cols = c(
+      ethnic_roma_ever,
+      oat_ever,
+      msm_12m, oat_12m, homeless_12m, sex_work_12m,
+      msm_ever, sex_work_ever, homeless_ever,
+      age_4cat, test_year
+    ),
+    names_to = "Variable",
+    values_to = "Level"
+  ) %>%
+  group_by(gender, Variable, Level, hcv_test_rslt) %>%
+  summarise(
+    Count = n(),
+    .groups = "drop"
+  ) %>%
+  pivot_wider(
+    names_from = hcv_test_rslt,
+    values_from = Count,
+    values_fill = 0
+  ) %>%
+  rename(
+    hcv_Negative = Negative,
+    hcv_Positive = Positive
+  ) %>%
+  mutate(
+    Total = hcv_Negative + hcv_Positive,
+    Proportion_Positive = (hcv_Positive / Total) * 100
+  ) %>%
+  group_by(gender, Variable) %>%
+  mutate(
+    ref_level = case_when(
+      Variable == "age_4cat" ~ "<30",
+      Variable == "test_year" ~ "2013",
+      TRUE ~ "0"
+    ),
+    ref_pos = hcv_Positive[Level == ref_level][1],
+    ref_neg = hcv_Negative[Level == ref_level][1],
+    OR = ifelse(Level == ref_level, 1,
+                (hcv_Positive / hcv_Negative) / (ref_pos / ref_neg)),
+    logOR = ifelse(Level == ref_level, NA, log(OR)),
+    SE_logOR = ifelse(Level == ref_level, NA,
+                      sqrt(1/hcv_Positive + 1/hcv_Negative + 1/ref_pos + 1/ref_neg)),
+    CI_lower = ifelse(Level == ref_level, NA,
+                      exp(logOR - 1.96 * SE_logOR)),
+    CI_upper = ifelse(Level == ref_level, NA,
+                      exp(logOR + 1.96 * SE_logOR))
+  ) %>%
+  ungroup() %>%
+  select(-ref_level, -ref_pos, -ref_neg, -logOR, -SE_logOR)
+
+# format frequencies and ORs
+hcv_summary_table <- hcv_summary_table %>%
+  mutate(
+    num_perc = sprintf("%d (%.1f)", hcv_Positive, Proportion_Positive),
+    or_formatted = ifelse(
+      is.na(OR),
+      "",
+      sprintf("%.2f (%.2f-%.2f)", OR, CI_lower, CI_upper)
+    )
+  )
+
+# save the summary table
+write.csv(hcv_summary_table, "hcv_summary_table_by_sex.csv", row.names = FALSE)
 
 # HCV tests per year (all tests up to and including first positive per person)
 hcv_all_tests <- read.csv("romania_pwid_hcv_bl.csv")
@@ -432,12 +493,12 @@ romania_pwid_hcv_test <- read.csv("romania_pwid_hcv_test.csv", stringsAsFactors 
 romania_pwid_hcv_test <- read.csv("romania_pwid_hcv_test.csv", stringsAsFactors = FALSE)
 
 # exposures
-exposure_vars <- c("oat_12m", "oat_ever", "sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever", "gender", "age_4cat", "syringe_1ml_ever", "syringe_2ml_ever", "drug_type_main", "heroin_12m", "legal_12m", "methadone_12m", "polyconsumer_12m", "syringes_1ml_12m_prior_5cat", "main_drug_injected_4cat")
+exposure_vars <- c("oat_12m", "oat_ever", "sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hcv_ever", "gender", "age_4cat", "syringe_1ml_ever", "syringe_2ml_ever", "drug_type_main", "heroin_12m", "legal_12m", "methadone_12m", "polyconsumer_12m", "syringes_1ml_12m_prior_5cat", "main_drug_injected_4cat")
 
 results_list <- list()
 
 # Relevel binary variables to factors with "No"/"Yes"
-binary_vars <- c("oat_12m", "oat_ever", "sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever", "syringe_1ml_ever", "syringe_2ml_ever", "heroin_12m", "legal_12m", "methadone_12m", "polyconsumer_12m")
+binary_vars <- c("oat_12m", "oat_ever", "sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hcv_ever", "syringe_1ml_ever", "syringe_2ml_ever", "heroin_12m", "legal_12m", "methadone_12m", "polyconsumer_12m")
 for (var in binary_vars) {
   romania_pwid_hcv_test[[var]] <- factor(ifelse(romania_pwid_hcv_test[[var]] == 1, "Yes", "No"), levels = c("No", "Yes"))
 }
