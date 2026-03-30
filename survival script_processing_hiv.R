@@ -110,6 +110,16 @@ romania_pwid_hiv <- romania_pwid_hiv %>%
 romania_pwid_hiv <- romania_pwid_hiv %>%
   mutate(hiv_test_dte = dplyr::if_else(hiv_test_rslt %in% c(1, 2), appointment_dte, as.Date(NA)))
 
+# first recorded hcv test
+first_test <- baseline_analysis_hiv %>%
+  summarise(hiv_test_dte = min(hiv_test_dte, na.rm = TRUE))
+print(first_test)
+
+# last recorded hcv test
+last_test <- baseline_analysis_hiv %>%
+  summarise(hiv_test_dte = max(hiv_test_dte, na.rm = TRUE))
+print(last_test)
+
 # create last_hiv_neg_test_dte
 romania_pwid_hiv <- romania_pwid_hiv %>%
   group_by(id) %>%

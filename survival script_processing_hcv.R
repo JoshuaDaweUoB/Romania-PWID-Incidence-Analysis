@@ -110,6 +110,16 @@ romania_pwid_hcv <- romania_pwid_hcv %>%
 romania_pwid_hcv <- romania_pwid_hcv %>%
   mutate(hcv_test_dte = dplyr::if_else(hcv_test_rslt %in% c(1, 2), appointment_dte, as.Date(NA)))
 
+# first recorded hcv test
+first_test <- baseline_analysis_hcv %>%
+  summarise(hcv_test_dte = min(hcv_test_dte, na.rm = TRUE))
+print(first_test)
+
+# last recorded hcv test
+last_test <- baseline_analysis_hcv %>%
+  summarise(hcv_test_dte = max(hcv_test_dte, na.rm = TRUE))
+print(last_test)
+
 # create last_hcv_neg_test_dte
 romania_pwid_hcv <- romania_pwid_hcv %>%
   group_by(id) %>%
