@@ -1,5 +1,5 @@
 ## load packages
-pacman::p_load(dplyr, tidyr, withr, lubridate, MASS, writexl, readxl, arsenal, survival, broom, ggplot2, purrr, tableone)
+pacman::p_load(dplyr, tidyr, withr, lubridate, MASS, writexl, readxl, arsenal, survival, broom, ggplot2, purrr, tableone, stringr)
 
 ## set wd
 setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/Romania PWID/data")
@@ -77,6 +77,125 @@ romania_pwid_hcv <- romania_pwid_hcv %>%
     age < 40 ~ "<40",
     age >= 40 ~ "40+"
   ))
+
+# syringe type
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  mutate(
+    syringe_1ml_ever_bin = case_when(
+      syringes_distributed_1ml > 0 ~ 1,
+      is.na(syringes_distributed_1ml) ~ 0
+    ),
+    syringe_2ml_ever_bin = case_when(
+      syringes_distributed_2ml > 0 ~ 1,
+      is.na(syringes_distributed_2ml) ~ 0
+    )
+  )
+
+# make syringe type time varying
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  arrange(id, appointment_dte) %>%
+  group_by(id) %>%
+  mutate(
+    syringe_1ml_ever = cummax(if_else(syringe_1ml_ever_bin == 1, 1, 0)),
+    syringe_2ml_ever = cummax(if_else(syringe_2ml_ever_bin == 1, 1, 0))
+  ) %>%
+  ungroup()
+
+# one year prior to test
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  mutate(
+    hcv_test_dte = if_else(!is.na(hcv_test_rslt), as.Date(appointment_dte), as.Date(NA)),
+    hcv_test_dte_12m_prev = hcv_test_dte - years(1)
+  )
+
+# sum number of syringes in past year by id
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  group_by(id) %>%
+  mutate(
+    syringes_1ml_12m_prior = sum(
+      syringes_distributed_1ml[appointment_dte >= hcv_test_dte_12m_prev &
+                               appointment_dte <= hcv_test_dte],
+      na.rm = TRUE
+    ),
+    syringes_2ml_12m_prior = sum(
+      syringes_distributed_2ml[appointment_dte >= hcv_test_dte_12m_prev &
+                               appointment_dte <= hcv_test_dte],
+      na.rm = TRUE
+    )
+  ) %>%
+  ungroup()
+
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  mutate(syringes_1ml_12m_prior_5cat = case_when(
+        syringes_1ml_12m_prior < 21 ~ "0-20",
+        syringes_1ml_12m_prior > 20 & syringes_1ml_12m_prior < 101 ~ "21-100",
+        syringes_1ml_12m_prior > 100 & syringes_1ml_12m_prior < 251 ~ "101-250",
+        syringes_1ml_12m_prior > 250 ~ "251+",
+        ))
+
+# main drug injected
+table(trimws(as.character(romania_pwid_hcv$drug_type)), useNA = "ifany")
+
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  mutate(
+    drug_type_main = case_when(
+      drug_type == "0" | is.na(drug_type) ~ "Undeclared",
+      str_detect(drug_type, "\\+") | str_length(drug_type) > 1 & str_detect(drug_type, "[HLM]") ~ "Polyconsumer",
+      drug_type == "1" | drug_type == "H" ~ "Heroin",
+      drug_type == "2" | drug_type == "L" ~ "Legal",
+      drug_type == "3" ~ "Polyconsumer",
+      drug_type == "4" ~ "Other drugs",
+      drug_type == "5" | drug_type == "M" ~ "Methadone",
+      TRUE ~ "Other"
+    )
+  )
+
+table(romania_pwid_hcv$drug_type_main, useNA = "ifany")
+
+# make drug indicators for past 12 months before test 
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  group_by(id) %>%
+  mutate(
+    heroin_12m = as.integer(any(drug_type_main == "Heroin" &
+                                !is.na(hcv_test_dte) &
+                                appointment_dte >= hcv_test_dte_12m_prev &
+                                appointment_dte <= hcv_test_dte,
+                                na.rm = TRUE)),
+    legal_12m = as.integer(any(drug_type_main == "Legal" &
+                               !is.na(hcv_test_dte) &
+                               appointment_dte >= hcv_test_dte_12m_prev &
+                               appointment_dte <= hcv_test_dte,
+                               na.rm = TRUE)),
+    methadone_12m = as.integer(any(drug_type_main == "Methadone" &
+                                   !is.na(hcv_test_dte) &
+                                   appointment_dte >= hcv_test_dte_12m_prev &
+                                   appointment_dte <= hcv_test_dte,
+                                   na.rm = TRUE)),
+    otherdrugs_12m = as.integer(any(drug_type_main == "Other drugs" &
+                                    !is.na(hcv_test_dte) &
+                                    appointment_dte >= hcv_test_dte_12m_prev &
+                                    appointment_dte <= hcv_test_dte,
+                                    na.rm = TRUE)),
+    undeclared_12m = as.integer(any(drug_type_main == "Undeclared" &
+                                    !is.na(hcv_test_dte) &
+                                    appointment_dte >= hcv_test_dte_12m_prev &
+                                    appointment_dte <= hcv_test_dte,
+                                    na.rm = TRUE)),
+    polyconsumer_12m = as.integer(any(drug_type_main == "Polyconsumer" &
+                                    !is.na(hcv_test_dte) &
+                                    appointment_dte >= hcv_test_dte_12m_prev &
+                                    appointment_dte <= hcv_test_dte,
+                                    na.rm = TRUE))                                    
+  ) %>%
+  ungroup()
+
+table(romania_pwid_hcv$heroin_12m, useNA = "ifany")
+table(romania_pwid_hcv$methadone_12m, useNA = "ifany")
+table(romania_pwid_hcv$otherdrugs_12m, useNA = "ifany")
+table(romania_pwid_hcv$undeclared_12m, useNA = "ifany")
+table(romania_pwid_hcv$legal_12m, useNA = "ifany")
+table(romania_pwid_hcv$polyconsumer_12m, useNA = "ifany")
+table(romania_pwid_hcv$syringes_1ml_12m_prior_5cat, useNA = "ifany")
 
 # sequence negative hcv tests
 

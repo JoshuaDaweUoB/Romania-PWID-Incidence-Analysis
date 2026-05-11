@@ -4,10 +4,24 @@ pacman::p_load(tidyr, withr, lubridate, MASS, writexl, readxl, arsenal, survival
 ## set wd
 setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/Romania PWID/data")
 
-## Baseline prevalence and predictors of HCV infection
+## baseline prevalence and predictors of HCV infection
  
 # load data
 baseline_analysis_hcv <- read.csv("romania_pwid_hcv_bl.csv")
+
+# relevel sex work variable
+baseline_analysis_hcv <- baseline_analysis_hcv %>%
+  mutate(
+    sex_work_ever_4cat = factor(
+      case_when(
+      sex_work_ever == 0 & gender == "Female" ~ 0,
+      sex_work_ever == 1 & gender == "Female" ~ 1, 
+      sex_work_ever == 0 & gender == "Male" ~ 2,
+      sex_work_ever == 1 & gender == "Male" ~ 3
+    ),
+    levels = c(0, 1, 2, 3), 
+    labels = c("No sex work - female", "Sex work - female", "No sex work - male", "Sex work - male")
+  ))
 
 # sequence by id 
 baseline_analysis_hcv <- baseline_analysis_hcv %>%
@@ -52,101 +66,218 @@ baseline_hcv <- baseline_analysis_hcv %>%
     gender = as.factor(gender),
     ethnic_roma_ever = as.factor(ethnic_roma_ever),
     oat_ever = as.factor(oat_ever),
-    sex_work_ever = as.factor(sex_work_ever),
+    sex_work_ever_4cat = as.factor(sex_work_ever_4cat),
     homeless_ever = as.factor(homeless_ever),
-    hcv_test_rslt_bin = ifelse(hcv_test_rslt == "Positive", 1, 0),
-    test_year = as.factor(year(as.Date(hcv_test_dte)))
+    hcv_test_rslt_bin = ifelse(hcv_test_rslt == "Positive", 1, 0)
   )
+table(baseline_analysis_hcv$sex_work_ever_4cat)
 
 # create unadjusted summary table
+vars_order <- c(
+  "gender",
+  "age_4cat",
+  "ethnic_roma_ever",
+  "sex_work_ever_4cat",
+  "homeless_ever",
+  "oat_ever"
+)
+
 hcv_summary_table <- baseline_hcv %>%
   pivot_longer(
-    cols = c(ethnic_roma_ever, oat_ever, sex_work_ever, homeless_ever,
-             age_4cat, gender, test_year),
+    cols = all_of(vars_order),
     names_to = "Variable",
     values_to = "Level"
   ) %>%
+  mutate(
+    Variable = factor(Variable, levels = vars_order)
+  ) %>%
   group_by(Variable, Level, hcv_test_rslt) %>%
   summarise(Count = n(), .groups = "drop") %>%
-  pivot_wider(names_from = hcv_test_rslt, values_from = Count, values_fill = 0) %>%
-  rename(hcv_Negative = Negative, hcv_Positive = Positive) %>%
+  pivot_wider(
+    names_from = hcv_test_rslt,
+    values_from = Count,
+    values_fill = 0
+  ) %>%
+  rename(
+    hcv_Negative = Negative,
+    hcv_Positive = Positive
+  ) %>%
   mutate(
     Total = hcv_Negative + hcv_Positive,
     Proportion_Positive = (hcv_Positive / Total) * 100
   ) %>%
+  arrange(Variable) %>%
   group_by(Variable) %>%
   mutate(
     ref_level = case_when(
       Variable == "age_4cat" ~ "<30",
       Variable == "gender" ~ "Female",
       Variable == "test_year" ~ "2013",
+      Variable == "sex_work_ever_4cat" ~ "No sex work - female",
       TRUE ~ "0"
     ),
     ref_pos = hcv_Positive[Level == ref_level][1],
-    ref_neg = hcv_Negative[Level == ref_level][1],
-    OR = ifelse(Level == ref_level, 1,
-                (hcv_Positive / hcv_Negative) / (ref_pos / ref_neg)),
-    logOR = ifelse(Level == ref_level, NA, log(OR)),
-    SE_logOR = ifelse(Level == ref_level, NA,
-                      sqrt(1/hcv_Positive + 1/hcv_Negative + 1/ref_pos + 1/ref_neg)),
-    CI_lower = ifelse(Level == ref_level, NA, exp(logOR - 1.96 * SE_logOR)),
-    CI_upper = ifelse(Level == ref_level, NA, exp(logOR + 1.96 * SE_logOR)),
     num_perc = sprintf("%d (%.1f)", hcv_Positive, Proportion_Positive),
-    or_formatted = ifelse(is.na(OR), "", sprintf("%.2f (%.2f-%.2f)", OR, CI_lower, CI_upper))
   ) %>%
-  ungroup() %>%
-  select(-ref_level, -ref_pos, -ref_neg, -logOR, -SE_logOR)
+  ungroup()
 
-# exposures list
-exposures <- c("ethnic_roma_ever", "oat_ever", "sex_work_ever", "homeless_ever")
+# unadjusted PRs
 
-adj_or_list <- lapply(exposures, function(var) {
-  formula_str <- paste0("hcv_test_rslt_bin ~ ", var, " + age_4cat + gender")
+# exposures
+exposures <- c("gender", "age_4cat", "ethnic_roma_ever", "sex_work_ever_4cat", "homeless_ever", "oat_ever")
+
+unadj_pr_list <- lapply(exposures, function(var) {
+
+formula_str <- paste0("hcv_test_rslt_bin ~ ", var)
   
-  mod <- glm(
+unadj_pr <- glm(
     formula = as.formula(formula_str),
     data = baseline_hcv,
-    family = binomial()
+    family = poisson(link = "log")
   )
-  
-  broom::tidy(mod, exponentiate = TRUE, conf.int = TRUE) %>%
+
+  broom::tidy(unadj_pr, exponentiate = TRUE, conf.int = TRUE) %>%
     filter(term == var | grepl(paste0("^", var), term)) %>%
     mutate(
       Variable = var,
       Level = sub(paste0("^", var), "", term),
-      adj_or_formatted = sprintf("%.2f (%.2f-%.2f)", estimate, conf.low, conf.high)
+      unadj_pr_formatted = sprintf("%.2f (%.2f-%.2f)", estimate, conf.low, conf.high)
     ) %>%
-    select(Variable, Level, adj_or_formatted)
+    dplyr::select(Variable, Level, unadj_pr_formatted)
 })
+unadj_pr_all <- bind_rows(unadj_pr_list)
 
-# age adjusted for gender
-mod_age <- glm(hcv_test_rslt_bin ~ age_4cat + gender, data = baseline_hcv, family = binomial())
+# models adjusting for gender, age and roma ethnicity
+
+# age adjusted for gender and roma
+mod_age <- glm(hcv_test_rslt_bin ~ age_4cat + gender + ethnic_roma_ever, data = baseline_hcv, family = poisson(link = "log"))
 adj_age <- broom::tidy(mod_age, exponentiate = TRUE, conf.int = TRUE) %>%
   filter(term != "(Intercept)") %>%
   mutate(
     Variable = "age_4cat",
     Level = sub("^age_4cat", "", term),
-    adj_or_formatted = sprintf("%.2f (%.2f-%.2f)", estimate, conf.low, conf.high)
+    adj1_pr_formatted = sprintf("%.2f (%.2f-%.2f)", estimate, conf.low, conf.high)
   ) %>%
-  select(Variable, Level, adj_or_formatted)
+  dplyr::select(Variable, Level, adj1_pr_formatted)
 
-# gender adjusted for age
-mod_gender <- glm(hcv_test_rslt_bin ~ gender + age_4cat, data = baseline_hcv, family = binomial())
+# gender adjusted for age and roma
+mod_gender <- glm(hcv_test_rslt_bin ~ gender + ethnic_roma_ever + age_4cat, data = baseline_hcv, family = poisson(link = "log"))
 adj_gender <- broom::tidy(mod_gender, exponentiate = TRUE, conf.int = TRUE) %>%
   filter(term != "(Intercept)") %>%
   mutate(
     Variable = "gender",
     Level = sub("^gender", "", term),
-    adj_or_formatted = sprintf("%.2f (%.2f-%.2f)", estimate, conf.low, conf.high)
+    adj1_pr_formatted = sprintf("%.2f (%.2f-%.2f)", estimate, conf.low, conf.high)
   ) %>%
-  select(Variable, Level, adj_or_formatted)
+  dplyr::select(Variable, Level, adj1_pr_formatted)
 
-# combine all adjusted ORs
-adj_or_all <- bind_rows(adj_or_list, adj_age, adj_gender)
+# roma adjusted for age and gender
+mod_roma <- glm(hcv_test_rslt_bin ~ ethnic_roma_ever + gender + age_4cat, data = baseline_hcv, family = poisson(link = "log"))
+adj_roma <- broom::tidy(mod_roma, exponentiate = TRUE, conf.int = TRUE) %>%
+  filter(term != "(Intercept)") %>%
+  mutate(
+    Variable = "ethnic_roma_ever",
+    Level = sub("^ethnic_roma_ever", "", term),
+    adj1_pr_formatted = sprintf("%.2f (%.2f-%.2f)", estimate, conf.low, conf.high)
+  ) %>%
+  dplyr::select(Variable, Level, adj1_pr_formatted)
+
+model1_pr_all <- bind_rows(adj_age, adj_gender, adj_roma)
+
+# model adjusting for sex, age, roma, homelessness, oat
+mod_sex <- glm(hcv_test_rslt_bin ~ age_4cat + gender + ethnic_roma_ever + homeless_ever + oat_ever, data = baseline_hcv, family = poisson(link = "log"))
+adj_sex <- broom::tidy(mod_sex, exponentiate = TRUE, conf.int = TRUE) %>%
+  filter(term != "(Intercept)") %>%
+  mutate(
+    Variable = "gender",
+    Level = sub("^gender", "", term),
+    adj2_pr_formatted = sprintf("%.2f (%.2f-%.2f)", estimate, conf.low, conf.high)
+  ) %>%
+  dplyr::select(Variable, Level, adj2_pr_formatted)
+
+mod_age <- glm(hcv_test_rslt_bin ~ age_4cat + gender + ethnic_roma_ever + homeless_ever + oat_ever, data = baseline_hcv, family = poisson(link = "log"))
+adj_age <- broom::tidy(mod_age, exponentiate = TRUE, conf.int = TRUE) %>%
+  filter(term != "(Intercept)") %>%
+  mutate(
+    Variable = "age_4cat",
+    Level = sub("^age_4cat", "", term),
+    adj2_pr_formatted = sprintf("%.2f (%.2f-%.2f)", estimate, conf.low, conf.high)
+  ) %>%
+  dplyr::select(Variable, Level, adj2_pr_formatted)
+
+mod_roma <- glm(hcv_test_rslt_bin ~ age_4cat + gender + ethnic_roma_ever + homeless_ever + oat_ever, data = baseline_hcv, family = poisson(link = "log"))
+adj_roma <- broom::tidy(mod_roma, exponentiate = TRUE, conf.int = TRUE) %>%
+  filter(term != "(Intercept)") %>%
+  mutate(
+    Variable = "ethnic_roma_ever",
+    Level = sub("^ethnic_roma_ever", "", term),
+    adj2_pr_formatted = sprintf("%.2f (%.2f-%.2f)", estimate, conf.low, conf.high)
+  ) %>%
+  dplyr::select(Variable, Level, adj2_pr_formatted)
+
+mod_homeless <- glm(hcv_test_rslt_bin ~ age_4cat + gender + ethnic_roma_ever + homeless_ever + oat_ever, data = baseline_hcv, family = poisson(link = "log"))
+adj_homeless <- broom::tidy(mod_homeless, exponentiate = TRUE, conf.int = TRUE) %>%
+  filter(term != "(Intercept)") %>%
+  mutate(
+    Variable = "homeless_ever",
+    Level = sub("^homeless_ever", "", term),
+    adj2_pr_formatted = sprintf("%.2f (%.2f-%.2f)", estimate, conf.low, conf.high)
+  ) %>%
+  dplyr::select(Variable, Level, adj2_pr_formatted)
+
+mod_oat <- glm(hcv_test_rslt_bin ~ age_4cat + gender + ethnic_roma_ever + homeless_ever + oat_ever, data = baseline_hcv, family = poisson(link = "log"))
+adj_oat <- broom::tidy(mod_oat, exponentiate = TRUE, conf.int = TRUE) %>%
+  filter(term != "(Intercept)") %>%
+  mutate(
+    Variable = "oat_ever",
+    Level = sub("^oat_ever", "", term),
+    adj2_pr_formatted = sprintf("%.2f (%.2f-%.2f)", estimate, conf.low, conf.high)
+  ) %>%
+  dplyr::select(Variable, Level, adj2_pr_formatted)
+ 
+model2_pr_all <- bind_rows(adj_sex, adj_age, adj_roma, adj_homeless, adj_oat)
+View(model2_pr_all)
+
+get_adj_pr <- function(data, outcome, exposure,
+                       covariates = c("age_4cat", "gender", "ethnic_roma_ever", "homeless_ever", "oat_ever")) {
+
+  # build formula
+  form <- as.formula(
+    paste(outcome, "~", paste(c(covariates, exposure), collapse = " + "))
+  )
+
+  mod <- glm(form, data = data, family = poisson(link = "log"))
+
+  broom::tidy(mod, exponentiate = TRUE, conf.int = TRUE) %>%
+    filter(term != "(Intercept)") %>%
+    filter(grepl(paste0("^", exposure), term)) %>%
+    mutate(
+      Variable = exposure,
+      Level = sub(paste0("^", exposure), "", term),
+      adj2_pr_formatted = sprintf("%.2f (%.2f-%.2f)", estimate, conf.low, conf.high)
+    ) %>%
+    dplyr::select(Variable, Level, adj2_pr_formatted)
+}
+
+adj_sex <- get_adj_pr(baseline_hcv, "hcv_test_rslt_bin", "gender")
+adj_age <- get_adj_pr(baseline_hcv, "hcv_test_rslt_bin", "age_4cat")
+adj_roma <- get_adj_pr(baseline_hcv, "hcv_test_rslt_bin", "ethnic_roma_ever")
+adj_homeless <- get_adj_pr(baseline_hcv, "hcv_test_rslt_bin", "homeless_ever")
+adj_oat <- get_adj_pr(baseline_hcv, "hcv_test_rslt_bin", "oat_ever")
+
+model2_pr_all <- bind_rows(adj_sex, adj_age, adj_roma, adj_homeless, adj_oat)
+View(model2_pr_all)
+
+
+
+
+
+# combine all PRs
+pr_all <- bind_rows(unadj_pr_all, model1_pr_all)
 
 # merge into summary table (single column)
 hcv_summary_table <- hcv_summary_table %>%
-  left_join(adj_or_all, by = c("Variable", "Level"))
+  left_join(pr_all, by = c("Variable", "Level"))
 
 # save
 write.csv(hcv_summary_table, "hcv_summary_table.csv", row.names = FALSE)
@@ -206,11 +337,11 @@ hcv_summary_table <- baseline_hcv %>%
   select(-ref_level, -ref_pos, -ref_neg, -logOR, -SE_logOR)
 
 # exposures
-exposures <- c("ethnic_roma_ever", "oat_ever", "sex_work_ever", "homeless_ever")
+exposures <- c("oat_ever", "sex_work_ever", "homeless_ever")
 
 # adjusted ORs (age + gender)
 adj_or_list <- lapply(exposures, function(var) {
-  formula_str <- paste0("hcv_test_rslt_bin ~ ", var, " + age_4cat + gender")
+  formula_str <- paste0("hcv_test_rslt_bin ~ ", var, " + age_4cat + gender + ethnic_roma_ever")
   
   mod <- glm(as.formula(formula_str), data = baseline_hcv, family = binomial())
   
@@ -224,9 +355,9 @@ adj_or_list <- lapply(exposures, function(var) {
     select(Variable, Level, adj_or_formatted)
 })
 
-# age adjusted for gender
+# age adjusted for gender and roma
 adj_age <- broom::tidy(
-  glm(hcv_test_rslt_bin ~ age_4cat + gender, data = baseline_hcv, family = binomial()),
+  glm(hcv_test_rslt_bin ~ age_4cat + gender + ethnic_roma_ever, data = baseline_hcv, family = binomial()),
   exponentiate = TRUE, conf.int = TRUE
 ) %>%
   filter(term != "(Intercept)") %>%
@@ -237,7 +368,7 @@ adj_age <- broom::tidy(
   ) %>%
   select(Variable, Level, adj_or_formatted)
 
-# gender adjusted for age
+# gender adjusted for age and roma
 adj_gender <- broom::tidy(
   glm(hcv_test_rslt_bin ~ gender + age_4cat, data = baseline_hcv, family = binomial()),
   exponentiate = TRUE, conf.int = TRUE
@@ -250,8 +381,21 @@ adj_gender <- broom::tidy(
   ) %>%
   select(Variable, Level, adj_or_formatted)
 
+# roma adjusted for gender and age
+adj_roma <- broom::tidy(
+  glm(hcv_test_rslt_bin ~ ethnic_roma_ever + gender + age_4cat, data = baseline_hcv, family = binomial()),
+  exponentiate = TRUE, conf.int = TRUE
+) %>%
+  filter(term != "(Intercept)") %>%
+  mutate(
+    Variable = "ethnic_roma_ever",
+    Level = sub("^ethnic_roma_ever", "", term),
+    adj_or_formatted = sprintf("%.2f (%.2f-%.2f)", estimate, conf.low, conf.high)
+  ) %>%
+  select(Variable, Level, adj_or_formatted)
+
 # combine + merge
-adj_or_all <- bind_rows(adj_or_list, adj_age, adj_gender)
+adj_or_all <- bind_rows(adj_or_list, adj_age, adj_gender, adj_roma)
 
 hcv_summary_table <- hcv_summary_table %>%
   left_join(adj_or_all, by = c("Variable", "Level"))

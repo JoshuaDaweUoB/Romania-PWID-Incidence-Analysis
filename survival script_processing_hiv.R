@@ -40,6 +40,11 @@ romania_pwid_treatment <- romania_pwid_treatment %>%
 ## load data
 romania_pwid_raw <- read_excel("ARAS DATA IDU 2013-2022.xlsx")
 
+## number pwid who were hiv & hcv tested
+romania_pwid_tested <- romania_pwid_raw %>%
+  filter(!is.na(hiv_test_rslt) | !is.na(hcv_test_rslt))
+table(romania_pwid_tested$hiv_test_rslt, romania_pwid_tested$hcv_test_rslt, useNA="ifany")
+
 # append treatment df to raw dataframe
 missing_cols <- setdiff(names(romania_pwid_raw), names(romania_pwid_treatment))
 romania_pwid_treatment[missing_cols] <- NA
