@@ -345,25 +345,12 @@ hiv_summary_table <- baseline_hiv %>%
   ungroup()%>%
   select(-ref_pos, -ref_level, -Proportion_Positive, -hiv_Negative, -hiv_Positive)
 
-
 # load data
 overall_data <- readRDS("overall_data.rds")
 baseline_analysis_hiv <- read.csv("romania_pwid_hiv_bl.csv")
 romania_pwid_hiv_test <- read.csv("romania_pwid_hiv_test.csv", stringsAsFactors = FALSE)
 
-# relevel sex work variable
-baseline_analysis_hiv <- baseline_analysis_hiv %>%
-  mutate(
-    sex_work_ever_4cat = factor(
-      case_when(
-      sex_work_ever == 0 & gender == "Female" ~ 0,
-      sex_work_ever == 1 & gender == "Female" ~ 1, 
-      sex_work_ever == 0 & gender == "Male" ~ 2,
-      sex_work_ever == 1 & gender == "Male" ~ 3
-    ),
-    levels = c(0, 1, 2, 3), 
-    labels = c("No sex work - female", "Sex work - female", "No sex work - male", "Sex work - male")
-  ))
+table(baseline_analysis_hiv$oat_ever, useNA="ifany")
 
 # overall column (all PWID)
 overall_column <- overall_data %>%

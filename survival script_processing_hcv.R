@@ -268,6 +268,9 @@ romania_pwid_hcv <- romania_pwid_hcv %>%
 
 # lifetime exposure variables
 
+
+
+
 # recode roma ethnicity
 romania_pwid_hcv <- romania_pwid_hcv %>%
   group_by(id) %>%
