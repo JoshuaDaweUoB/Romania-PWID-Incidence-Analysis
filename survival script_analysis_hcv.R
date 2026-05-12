@@ -282,6 +282,37 @@ hcv_summary_table <- hcv_summary_table %>%
 # save
 write.csv(hcv_summary_table, "hcv_summary_table.csv", row.names = FALSE)
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # stratified by sex
 
 # prepare baseline data
