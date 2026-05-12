@@ -150,7 +150,7 @@ romania_pwid_hcv <- romania_pwid_hcv %>%
     )
   )
 
-table(romania_pwid_hcv$drug_type_main, useNA = "ifany")
+table(romania_pwid_hcv$drug_type_main, romania_pwid_hcv$drug_type, useNA = "ifany")
 
 # make drug indicators for past 12 months before test 
 romania_pwid_hcv <- romania_pwid_hcv %>%
@@ -239,6 +239,19 @@ last_test <- baseline_analysis_hcv %>%
   summarise(hcv_test_dte = max(hcv_test_dte, na.rm = TRUE))
 print(last_test)
 
+# sequence of negative tests
+hcv_neg_test_seq <- romania_pwid_hcv %>%
+  filter(hcv_test_rslt == 1) %>%
+  arrange(id, appointment_dte) %>%
+  group_by(id) %>%
+  mutate(neg_hcv_seq = row_number()) %>%
+  ungroup() %>%
+  dplyr::select(row_id, neg_hcv_seq) 
+
+# merge back using row_id
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  left_join(hcv_neg_test_seq, by = "row_id")
+
 # create last_hcv_neg_test_dte
 romania_pwid_hcv <- romania_pwid_hcv %>%
   group_by(id) %>%
@@ -265,7 +278,7 @@ romania_pwid_hcv <- romania_pwid_hcv %>%
 # recode hcv ever
 romania_pwid_hcv <- romania_pwid_hcv %>%
   group_by(id) %>%
-  mutate(hcv_ever = ifelse(any(hcv == 1, na.rm = TRUE), 1, 0)) %>%
+  mutate(hcv_ever = ifelse(any(hcv_test_rslt == 2, na.rm = TRUE), 1, 0)) %>%
   ungroup() %>%
   mutate(hcv_ever = factor(hcv_ever, levels = c(0, 1)))
 
@@ -324,7 +337,7 @@ romania_pwid_hcv <- romania_pwid_hcv %>%
     msm_current, msm_ever,
     homeless_current, homeless_ever,
     ethnic_roma, ethnic_roma_ever,
-    hcv, hcv_ever,
+    hcv_test_rslt, hcv_ever,
     everything()
   )
 
@@ -612,7 +625,7 @@ romania_pwid_hcv_test <- romania_pwid_hcv %>%
     syringes_1ml_12m_prior, syringes_2ml_12m_prior,
     syringes_1ml_12m_prior_5cat,
     drug_type_main,
-    heroin_12m, legal_12m, methadone_12m, polyconsumer_12m, main_drug_injected_4cat
+    heroin_12m, legal_12m, methadone_12m, polyconsumer_12m, drug_type_main
   ) %>%
   rename(
     appointment_dte = appointment_dte_start,
@@ -649,7 +662,7 @@ romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
   )
 
 # exposure variables 
-exposure_vars <- c("oat_12m", "oat_ever", "sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hcv_ever", "gender", "age_4cat", "syringe_1ml_ever", "syringe_2ml_ever", "syringes_1ml_12m_prior", "syringes_2ml_12m_prior", "drug_type_main", "heroin_12m", "legal_12m", "methadone_12m", "polyconsumer_12m", "syringes_1ml_12m_prior_5cat", "main_drug_injected_4cat")
+exposure_vars <- c("oat_12m", "oat_ever", "sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hcv_ever", "gender", "age_4cat", "syringe_1ml_ever", "syringe_2ml_ever", "syringes_1ml_12m_prior", "syringes_2ml_12m_prior", "drug_type_main", "heroin_12m", "legal_12m", "methadone_12m", "polyconsumer_12m", "syringes_1ml_12m_prior_5cat", "drug_type_main")
 
 # table of exposure variables
 exposure_vars <- CreateTableOne(vars = exposure_vars, data = romania_pwid_hcv_test)

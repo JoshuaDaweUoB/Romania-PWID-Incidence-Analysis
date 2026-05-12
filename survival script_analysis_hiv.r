@@ -1,5 +1,5 @@
 ## load packages
-pacman::p_load(tidyr, withr, lubridate, MASS, writexl, readxl, arsenal, survival, broom, ggplot2, tableone, dplyr)
+pacman::p_load(tidyr, withr, lubridate, MASS, writexl, readxl, arsenal, survival, broom, ggplot2, dplyr)
 
 ## set wd
 setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/Romania PWID/data")
@@ -8,6 +8,20 @@ setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/
  
 # load data
 baseline_analysis_hiv <- read.csv("romania_pwid_hiv_bl.csv")
+
+# relevel sex work variable
+baseline_analysis_hiv <- baseline_analysis_hiv %>%
+  mutate(
+    sex_work_ever_4cat = factor(
+      case_when(
+      sex_work_ever == 0 & gender == "Female" ~ 0,
+      sex_work_ever == 1 & gender == "Female" ~ 1, 
+      sex_work_ever == 0 & gender == "Male" ~ 2,
+      sex_work_ever == 1 & gender == "Male" ~ 3
+    ),
+    levels = c(0, 1, 2, 3), 
+    labels = c("No sex work - female", "Sex work - female", "No sex work - male", "Sex work - male")
+  ))
 
 # sequence by id 
 baseline_analysis_hiv <- baseline_analysis_hiv %>%
@@ -19,7 +33,6 @@ baseline_analysis_hiv <- baseline_analysis_hiv %>%
 # highest value in the id_seq column
 highest_id_seq <- baseline_analysis_hiv %>%
   summarise(max_id_seq = max(id_seq, na.rm = TRUE))
-cat("Highest value in id_seq:\n")
 print(highest_id_seq)
 
 # keep rows where appointment_seq equals 1
@@ -53,378 +66,339 @@ baseline_hiv <- baseline_analysis_hiv %>%
     gender = as.factor(gender),
     ethnic_roma_ever = as.factor(ethnic_roma_ever),
     oat_ever = as.factor(oat_ever),
-    sex_work_ever = as.factor(sex_work_ever),
+    sex_work_ever_4cat = as.factor(sex_work_ever_4cat),
     homeless_ever = as.factor(homeless_ever),
-    hiv_test_rslt_bin = ifelse(hiv_test_rslt == "Positive", 1, 0),
-    test_year = as.factor(year(as.Date(hiv_test_dte)))
+    drug_type_main = as.factor(drug_type_main),
+    hiv_test_rslt_bin = ifelse(hiv_test_rslt == "Positive", 1, 0)
   )
-
-# tests by year and age group
-tbl <- table(baseline_hiv$test_year, baseline_hiv$age_4cat)
-row_pct <- prop.table(tbl, margin = 1) * 100
-row_pct <- round(row_pct, 1)
-row_pct
-aggregate(age ~ test_year, data = baseline_hiv, FUN = mean, na.rm = TRUE)
+table(baseline_analysis_hiv$drug_type_main, useNA = "ifany")
 
 # create unadjusted summary table
+vars_order <- c(
+  "gender",
+  "age_4cat",
+  "ethnic_roma_ever",
+  "sex_work_ever_4cat",
+  "homeless_ever",
+  "oat_ever",
+  "drug_type_main"
+)
+
 hiv_summary_table <- baseline_hiv %>%
   pivot_longer(
-    cols = c(ethnic_roma_ever, oat_ever, sex_work_ever, homeless_ever,
-             age_4cat, gender, test_year),
+    cols = all_of(vars_order),
     names_to = "Variable",
     values_to = "Level"
   ) %>%
+  mutate(
+    Variable = factor(Variable, levels = vars_order)
+  ) %>%
   group_by(Variable, Level, hiv_test_rslt) %>%
   summarise(Count = n(), .groups = "drop") %>%
-  pivot_wider(names_from = hiv_test_rslt, values_from = Count, values_fill = 0) %>%
-  rename(hiv_Negative = Negative, hiv_Positive = Positive) %>%
+  pivot_wider(
+    names_from = hiv_test_rslt,
+    values_from = Count,
+    values_fill = 0
+  ) %>%
+  rename(
+    hiv_Negative = Negative,
+    hiv_Positive = Positive
+  ) %>%
   mutate(
     Total = hiv_Negative + hiv_Positive,
     Proportion_Positive = (hiv_Positive / Total) * 100
   ) %>%
+  arrange(Variable) %>%
   group_by(Variable) %>%
   mutate(
     ref_level = case_when(
       Variable == "age_4cat" ~ "<30",
       Variable == "gender" ~ "Female",
       Variable == "test_year" ~ "2013",
+      Variable == "sex_work_ever_4cat" ~ "No sex work - female",
+      Variable == "drug_type_main" ~ "Heroin",
       TRUE ~ "0"
     ),
     ref_pos = hiv_Positive[Level == ref_level][1],
-    ref_neg = hiv_Negative[Level == ref_level][1],
-    OR = ifelse(Level == ref_level, 1,
-                (hiv_Positive / hiv_Negative) / (ref_pos / ref_neg)),
-    logOR = ifelse(Level == ref_level, NA, log(OR)),
-    SE_logOR = ifelse(Level == ref_level, NA,
-                      sqrt(1/hiv_Positive + 1/hiv_Negative + 1/ref_pos + 1/ref_neg)),
-    CI_lower = ifelse(Level == ref_level, NA, exp(logOR - 1.96 * SE_logOR)),
-    CI_upper = ifelse(Level == ref_level, NA, exp(logOR + 1.96 * SE_logOR)),
     num_perc = sprintf("%d (%.1f)", hiv_Positive, Proportion_Positive),
-    or_formatted = ifelse(is.na(OR), "", sprintf("%.2f (%.2f-%.2f)", OR, CI_lower, CI_upper))
   ) %>%
-  ungroup() %>%
-  select(-ref_level, -ref_pos, -ref_neg, -logOR, -SE_logOR)
+  ungroup()%>%
+  select(-ref_pos, -ref_level, -Proportion_Positive, -hiv_Negative, -hiv_Positive)
 
-# exposures list
-exposures <- c("ethnic_roma_ever", "oat_ever", "sex_work_ever", "homeless_ever")
+# unadjusted PRs
 
-adj_or_list <- lapply(exposures, function(var) {
-  formula_str <- paste0("hiv_test_rslt_bin ~ ", var, " + age_4cat + gender")
+# exposures
+exposures <- c("gender", "age_4cat", "ethnic_roma_ever", "sex_work_ever_4cat", "homeless_ever", "oat_ever", "drug_type_main")
+
+unadj_pr_list <- lapply(exposures, function(var) {
+
+formula_str <- paste0("hiv_test_rslt_bin ~ ", var)
   
-  mod <- glm(
+unadj_pr <- glm(
     formula = as.formula(formula_str),
     data = baseline_hiv,
-    family = binomial()
+    family = poisson(link = "log")
   )
-  
-  broom::tidy(mod, exponentiate = TRUE, conf.int = TRUE) %>%
+
+  broom::tidy(unadj_pr, exponentiate = TRUE, conf.int = TRUE) %>%
     filter(term == var | grepl(paste0("^", var), term)) %>%
     mutate(
       Variable = var,
       Level = sub(paste0("^", var), "", term),
-      adj_or_formatted = sprintf("%.2f (%.2f-%.2f)", estimate, conf.low, conf.high)
+      unadj_pr_formatted = sprintf("%.2f (%.2f-%.2f)", estimate, conf.low, conf.high)
     ) %>%
-    select(Variable, Level, adj_or_formatted)
+    dplyr::select(Variable, Level, unadj_pr_formatted)
 })
 
-# age adjusted for gender
-mod_age <- glm(hiv_test_rslt_bin ~ age_4cat + gender, data = baseline_hiv, family = binomial())
-adj_age <- broom::tidy(mod_age, exponentiate = TRUE, conf.int = TRUE) %>%
-  filter(term != "(Intercept)") %>%
-  mutate(
-    Variable = "age_4cat",
-    Level = sub("^age_4cat", "", term),
-    adj_or_formatted = sprintf("%.2f (%.2f-%.2f)", estimate, conf.low, conf.high)
-  ) %>%
-  select(Variable, Level, adj_or_formatted)
+unadj_pr_all <- bind_rows(unadj_pr_list)
 
-# gender adjusted for age
-mod_gender <- glm(hiv_test_rslt_bin ~ gender + age_4cat, data = baseline_hiv, family = binomial())
-adj_gender <- broom::tidy(mod_gender, exponentiate = TRUE, conf.int = TRUE) %>%
-  filter(term != "(Intercept)") %>%
-  mutate(
-    Variable = "gender",
-    Level = sub("^gender", "", term),
-    adj_or_formatted = sprintf("%.2f (%.2f-%.2f)", estimate, conf.low, conf.high)
-  ) %>%
-  select(Variable, Level, adj_or_formatted)
-
-# combine all adjusted ORs
-adj_or_all <- bind_rows(adj_or_list, adj_age, adj_gender)
-
-# merge into summary table (single column)
+# merge into summary table
 hiv_summary_table <- hiv_summary_table %>%
-  left_join(adj_or_all, by = c("Variable", "Level"))
+  left_join(unadj_pr_all, by = c("Variable", "Level"))
+
+# models adjusting for gender, age and roma ethnicity
+
+adj1_vars <- c("age_4cat", "gender", "ethnic_roma_ever")
+
+results_list <- list()
+
+for (i in adj1_vars) {
+
+  model <- glm(
+    hiv_test_rslt_bin ~ age_4cat + gender + ethnic_roma_ever,
+    data = baseline_hiv,
+    family = poisson(link = "log")
+  )
+
+  results_list[[i]] <- broom::tidy(
+    model,
+    exponentiate = TRUE,
+    conf.int = TRUE
+  ) %>%
+    filter(term != "(Intercept)") %>%
+    filter(grepl(i, term)) %>%
+    mutate(
+      Variable = i,
+      Level = sub(paste0("^", i), "", term),
+      adj1_pr_formatted = sprintf(
+        "%.2f (%.2f-%.2f)",
+        estimate,
+        conf.low,
+        conf.high
+      )
+    ) %>%
+    dplyr::select(
+      Variable,
+      Level,
+      adj1_pr_formatted
+    )
+}
+
+model1_pr_all <- bind_rows(results_list)
+
+# merge into summary table
+hiv_summary_table <- hiv_summary_table %>%
+  left_join(model1_pr_all, by = c("Variable", "Level"))
+
+# model adjusting for sex, age, roma, homelessness, oat, drug type
+
+adj2_vars <- c("age_4cat", "gender", "ethnic_roma_ever", "homeless_ever", "oat_ever", "drug_type_main")
+
+results_list <- list()
+
+for (i in adj2_vars) {
+
+  model <- glm(
+    hiv_test_rslt_bin ~ age_4cat + gender + ethnic_roma_ever + homeless_ever + oat_ever + drug_type_main,
+    data = baseline_hiv,
+    family = poisson(link = "log")
+  )
+
+  results_list[[i]] <- broom::tidy(
+    model,
+    exponentiate = TRUE,
+    conf.int = TRUE
+  ) %>%
+    filter(term != "(Intercept)") %>%
+    filter(grepl(i, term)) %>%
+    mutate(
+      Variable = i,
+      Level = sub(paste0("^", i), "", term),
+      adj2_pr_formatted = sprintf(
+        "%.2f (%.2f-%.2f)",
+        estimate,
+        conf.low,
+        conf.high
+      )
+    ) %>%
+    dplyr::select(
+      Variable,
+      Level,
+      adj2_pr_formatted
+    )
+}
+
+model2_pr_all <- bind_rows(results_list)
+
+# merge into summary table
+hiv_summary_table <- hiv_summary_table %>%
+  left_join(model2_pr_all, by = c("Variable", "Level"))
+
+# model adjusting for age, roma, sex work, homelessness, oat, drug type
+
+adj3_vars <- c("age_4cat", "ethnic_roma_ever", "sex_work_ever_4cat", "homeless_ever", "oat_ever", "drug_type_main")
+
+results_list <- list()
+
+for (i in adj3_vars) {
+
+  model <- glm(
+    hiv_test_rslt_bin ~ age_4cat + sex_work_ever_4cat + ethnic_roma_ever + homeless_ever + oat_ever + drug_type_main,
+    data = baseline_hiv,
+    family = poisson(link = "log")
+  )
+
+  results_list[[i]] <- broom::tidy(
+    model,
+    exponentiate = TRUE,
+    conf.int = TRUE
+  ) %>%
+    filter(term != "(Intercept)") %>%
+    filter(grepl(i, term)) %>%
+    mutate(
+      Variable = i,
+      Level = sub(paste0("^", i), "", term),
+      adj3_pr_formatted = sprintf(
+        "%.2f (%.2f-%.2f)",
+        estimate,
+        conf.low,
+        conf.high
+      )
+    ) %>%
+    dplyr::select(
+      Variable,
+      Level,
+      adj3_pr_formatted
+    )
+}
+
+model3_pr_all <- bind_rows(results_list)
+
+# merge into summary table
+hiv_summary_table <- hiv_summary_table %>%
+  left_join(model3_pr_all, by = c("Variable", "Level"))
 
 # save
 write.csv(hiv_summary_table, "hiv_summary_table.csv", row.names = FALSE)
 
-# stratified by sex
+## differences between excluded and included in longitudinal analysis
 
-# prepare baseline data
-baseline_hiv <- baseline_analysis_hiv %>%
-  mutate(
-    age_4cat = as.factor(age_4cat),
-    gender = as.factor(gender),
-    ethnic_roma_ever = as.factor(ethnic_roma_ever),
-    oat_ever = as.factor(oat_ever),
-    sex_work_ever = as.factor(sex_work_ever),
-    homeless_ever = as.factor(homeless_ever),
-    hiv_test_rslt_bin = ifelse(hiv_test_rslt == "Positive", 1, 0),
-    test_year = as.factor(year(as.Date(hiv_test_dte)))
-  )
+# variable for table
+table_vars <- c(
+  "gender",
+  "age_4cat",
+  "ethnic_roma_ever",
+  "sex_work_ever_4cat",
+  "homeless_ever",
+  "oat_ever",
+  "drug_type_main"
+)
 
-# unadjusted summary table
 hiv_summary_table <- baseline_hiv %>%
   pivot_longer(
-    cols = c(ethnic_roma_ever, oat_ever, sex_work_ever, homeless_ever,
-             age_4cat, gender, test_year),
+    cols = all_of(vars_order),
     names_to = "Variable",
     values_to = "Level"
   ) %>%
+  mutate(
+    Variable = factor(Variable, levels = vars_order)
+  ) %>%
   group_by(Variable, Level, hiv_test_rslt) %>%
   summarise(Count = n(), .groups = "drop") %>%
-  pivot_wider(names_from = hiv_test_rslt, values_from = Count, values_fill = 0) %>%
-  rename(hiv_Negative = Negative, hiv_Positive = Positive) %>%
+  pivot_wider(
+    names_from = hiv_test_rslt,
+    values_from = Count,
+    values_fill = 0
+  ) %>%
+  rename(
+    hiv_Negative = Negative,
+    hiv_Positive = Positive
+  ) %>%
   mutate(
     Total = hiv_Negative + hiv_Positive,
     Proportion_Positive = (hiv_Positive / Total) * 100
   ) %>%
+  arrange(Variable) %>%
   group_by(Variable) %>%
   mutate(
     ref_level = case_when(
       Variable == "age_4cat" ~ "<30",
       Variable == "gender" ~ "Female",
       Variable == "test_year" ~ "2013",
+      Variable == "sex_work_ever_4cat" ~ "No sex work - female",
+      Variable == "drug_type_main" ~ "Heroin",
       TRUE ~ "0"
     ),
     ref_pos = hiv_Positive[Level == ref_level][1],
-    ref_neg = hiv_Negative[Level == ref_level][1],
-    OR = ifelse(Level == ref_level, 1,
-                (hiv_Positive / hiv_Negative) / (ref_pos / ref_neg)),
-    logOR = ifelse(Level == ref_level, NA, log(OR)),
-    SE_logOR = ifelse(Level == ref_level, NA,
-                      sqrt(1/hiv_Positive + 1/hiv_Negative + 1/ref_pos + 1/ref_neg)),
-    CI_lower = ifelse(Level == ref_level, NA, exp(logOR - 1.96 * SE_logOR)),
-    CI_upper = ifelse(Level == ref_level, NA, exp(logOR + 1.96 * SE_logOR)),
     num_perc = sprintf("%d (%.1f)", hiv_Positive, Proportion_Positive),
-    or_formatted = ifelse(is.na(OR), "", sprintf("%.2f (%.2f-%.2f)", OR, CI_lower, CI_upper))
   ) %>%
-  ungroup() %>%
-  select(-ref_level, -ref_pos, -ref_neg, -logOR, -SE_logOR)
+  ungroup()%>%
+  select(-ref_pos, -ref_level, -Proportion_Positive, -hiv_Negative, -hiv_Positive)
 
-# exposures
-exposures <- c("ethnic_roma_ever", "oat_ever", "sex_work_ever", "homeless_ever")
 
-# adjusted ORs (age + gender)
-adj_or_list <- lapply(exposures, function(var) {
-  formula_str <- paste0("hiv_test_rslt_bin ~ ", var, " + age_4cat + gender")
-  
-  mod <- glm(as.formula(formula_str), data = baseline_hiv, family = binomial())
-  
-  broom::tidy(mod, exponentiate = TRUE, conf.int = TRUE) %>%
-    filter(grepl(paste0("^", var), term)) %>%
-    mutate(
-      Variable = var,
-      Level = sub(paste0("^", var), "", term),
-      adj_or_formatted = sprintf("%.2f (%.2f-%.2f)", estimate, conf.low, conf.high)
-    ) %>%
-    select(Variable, Level, adj_or_formatted)
-})
+# load data
+overall_data <- readRDS("overall_data.rds")
+baseline_analysis_hiv <- read.csv("romania_pwid_hiv_bl.csv")
+romania_pwid_hiv_test <- read.csv("romania_pwid_hiv_test.csv", stringsAsFactors = FALSE)
 
-# age adjusted for gender
-adj_age <- broom::tidy(
-  glm(hiv_test_rslt_bin ~ age_4cat + gender, data = baseline_hiv, family = binomial()),
-  exponentiate = TRUE, conf.int = TRUE
-) %>%
-  filter(term != "(Intercept)") %>%
+# relevel sex work variable
+baseline_analysis_hiv <- baseline_analysis_hiv %>%
   mutate(
-    Variable = "age_4cat",
-    Level = sub("^age_4cat", "", term),
-    adj_or_formatted = sprintf("%.2f (%.2f-%.2f)", estimate, conf.low, conf.high)
-  ) %>%
-  select(Variable, Level, adj_or_formatted)
+    sex_work_ever_4cat = factor(
+      case_when(
+      sex_work_ever == 0 & gender == "Female" ~ 0,
+      sex_work_ever == 1 & gender == "Female" ~ 1, 
+      sex_work_ever == 0 & gender == "Male" ~ 2,
+      sex_work_ever == 1 & gender == "Male" ~ 3
+    ),
+    levels = c(0, 1, 2, 3), 
+    labels = c("No sex work - female", "Sex work - female", "No sex work - male", "Sex work - male")
+  ))
 
-# gender adjusted for age
-adj_gender <- broom::tidy(
-  glm(hiv_test_rslt_bin ~ gender + age_4cat, data = baseline_hiv, family = binomial()),
-  exponentiate = TRUE, conf.int = TRUE
-) %>%
-  filter(term != "(Intercept)") %>%
-  mutate(
-    Variable = "gender",
-    Level = sub("^gender", "", term),
-    adj_or_formatted = sprintf("%.2f (%.2f-%.2f)", estimate, conf.low, conf.high)
-  ) %>%
-  select(Variable, Level, adj_or_formatted)
-
-# combine + merge
-adj_or_all <- bind_rows(adj_or_list, adj_age, adj_gender)
-
-hiv_summary_table <- hiv_summary_table %>%
-  left_join(adj_or_all, by = c("Variable", "Level"))
-
-write.csv(hiv_summary_table, "hiv_summary_table.csv", row.names = FALSE)
-
-# stratified summary table
-hiv_summary_table_sex <- baseline_hiv %>%
+# overall column (all PWID)
+overall_column <- overall_data %>%
   pivot_longer(
-    cols = c(ethnic_roma_ever, oat_ever, sex_work_ever, homeless_ever,
-             age_4cat, test_year),
+    cols = all_of(table_vars),
     names_to = "Variable",
     values_to = "Level"
   ) %>%
-  group_by(gender, Variable, Level, hiv_test_rslt) %>%
-  summarise(Count = n(), .groups = "drop") %>%
-  pivot_wider(names_from = hiv_test_rslt, values_from = Count, values_fill = 0) %>%
-  rename(hiv_Negative = Negative, hiv_Positive = Positive) %>%
   mutate(
-    Total = hiv_Negative + hiv_Positive,
-    Proportion_Positive = (hiv_Positive / Total) * 100
+    Variable = factor(Variable, levels = table_vars)
   ) %>%
-  group_by(gender, Variable) %>%
-  mutate(
-    ref_level = case_when(
-      Variable == "age_4cat" ~ "<30",
-      Variable == "test_year" ~ "2013",
-      TRUE ~ "0"
-    ),
-    ref_pos = hiv_Positive[Level == ref_level][1],
-    ref_neg = hiv_Negative[Level == ref_level][1],
-    OR = ifelse(Level == ref_level, 1,
-                (hiv_Positive / hiv_Negative) / (ref_pos / ref_neg)),
-    logOR = ifelse(Level == ref_level, NA, log(OR)),
-    SE_logOR = ifelse(Level == ref_level, NA,
-                      sqrt(1/hiv_Positive + 1/hiv_Negative + 1/ref_pos + 1/ref_neg)),
-    CI_lower = ifelse(Level == ref_level, NA, exp(logOR - 1.96 * SE_logOR)),
-    CI_upper = ifelse(Level == ref_level, NA, exp(logOR + 1.96 * SE_logOR)),
-    num_perc = sprintf("%d (%.1f)", hiv_Positive, Proportion_Positive),
-    or_formatted = ifelse(is.na(OR), "", sprintf("%.2f (%.2f-%.2f)", OR, CI_lower, CI_upper))
-  ) %>%
-  ungroup() %>%
-  select(-ref_level, -ref_pos, -ref_neg, -logOR, -SE_logOR)
+  group_by(Variable, Level) %>%
+  summarise(Count_first_col = n(), .groups = "drop") 
+View(overall_column)
 
-# stratified adjusted ORs (age only)
-adj_or_sex <- lapply(exposures, function(var) {
-  baseline_hiv %>%
-    group_by(gender) %>%
-    group_modify(~ {
-      mod <- glm(
-        as.formula(paste0("hiv_test_rslt_bin ~ ", var, " + age_4cat")),
-        data = .x,
-        family = binomial()
-      )
-      
-      broom::tidy(mod, exponentiate = TRUE, conf.int = TRUE) %>%
-        filter(grepl(paste0("^", var), term)) %>%
-        mutate(
-          Variable = var,
-          Level = sub(paste0("^", var), "", term),
-          adj_or_formatted = sprintf("%.2f (%.2f-%.2f)", estimate, conf.low, conf.high)
-        ) %>%
-        select(Variable, Level, adj_or_formatted)
-    }) %>%
-    ungroup()
-}) %>%
-  bind_rows()
-
-# stratified age (no further adjustment)
-adj_age_sex <- baseline_hiv %>%
-  group_by(gender) %>%
-  group_modify(~ {
-    mod <- glm(hiv_test_rslt_bin ~ age_4cat, data = .x, family = binomial())
-    
-    broom::tidy(mod, exponentiate = TRUE, conf.int = TRUE) %>%
-      filter(term != "(Intercept)") %>%
-      mutate(
-        Variable = "age_4cat",
-        Level = sub("^age_4cat", "", term),
-        adj_or_formatted = sprintf("%.2f (%.2f-%.2f)", estimate, conf.low, conf.high)
-      ) %>%
-      select(Variable, Level, adj_or_formatted)
-  }) %>%
-  ungroup()
-
-# combine + merge stratified
-adj_or_all_sex <- bind_rows(adj_or_sex, adj_age_sex)
-
-hiv_summary_table_sex <- hiv_summary_table_sex %>%
-  left_join(adj_or_all_sex, by = c("gender", "Variable", "Level"))
-
-write.csv(hiv_summary_table_sex, "hiv_summary_table_by_sex.csv", row.names = FALSE)
-
-# hiv tests per year (all tests up to and including first positive per person)
-hiv_all_tests <- read.csv("romania_pwid_hiv_bl.csv")
-
-# Recode test results to 0/1
-hiv_all_tests <- hiv_all_tests %>%
-  mutate(hiv_test_rslt = case_when(
-    hiv_test_rslt == 1 ~ 0,
-    hiv_test_rslt == 2 ~ 1,
-    TRUE ~ hiv_test_rslt
-  ))
-
-# Sort by id and date, then keep only tests up to and including first positive
-hiv_all_tests <- hiv_all_tests %>%
-  arrange(id, hiv_test_dte) %>%
-  group_by(id) %>%
-  mutate(
-    cumulative_positive = cumsum(hiv_test_rslt),
-    # Keep if: never positive yet (cumulative = 0) OR this is the first positive (cumulative = 1 and result = 1)
-    keep_test = cumulative_positive == 0 | (cumulative_positive == 1 & hiv_test_rslt == 1)
-  ) %>%
-  filter(keep_test) %>%
-  ungroup() %>%
-  select(-cumulative_positive, -keep_test)
-
-# Create year from test date and summarise
-hiv_tests_by_year <- hiv_all_tests %>%
-  mutate(
-    hiv_test_dte = as.Date(hiv_test_dte),
-    test_year = year(hiv_test_dte)
-  ) %>%
-  filter(!is.na(test_year)) %>%
-  group_by(test_year) %>%
-  summarise(
-    n_tests = n(),
-    n_positive = sum(hiv_test_rslt == 1, na.rm = TRUE),
-    n_negative = sum(hiv_test_rslt == 0, na.rm = TRUE),
-    .groups = "drop"
+# second column (recorded HIV test)
+second_column <- baseline_analysis_hiv %>%
+  mutate(across(all_of(table_vars), as.character)) %>%
+  pivot_longer(
+    cols = all_of(table_vars),
+    names_to = "Variable",
+    values_to = "Level"
   ) %>%
   mutate(
-    prop_positive = (n_positive / n_tests) * 100,
-    n_perc_positive = sprintf("%d (%.1f%%)", n_positive, prop_positive)
-  )
-
-# Add total row
-hiv_tests_total <- hiv_tests_by_year %>%
-  summarise(
-    test_year = "Total",
-    n_tests = sum(n_tests),
-    n_positive = sum(n_positive),
-    n_negative = sum(n_negative)
+    Variable = factor(Variable, levels = table_vars)
   ) %>%
-  mutate(
-    prop_positive = (n_positive / n_tests) * 100,
-    n_perc_positive = sprintf("%d (%.1f%%)", n_positive, prop_positive)
-  )
+  group_by(Variable, Level) %>%
+  summarise(Count_second_col = n(), .groups = "drop")
 
-hiv_tests_by_year <- bind_rows(
-  hiv_tests_by_year %>% mutate(test_year = as.character(test_year)),
-  hiv_tests_total
-)
+# merge into table
+hiv_included_table <- overall_column %>%
+  left_join(second_column, by = c("Variable", "Level")) %>%
+  mutate(prop_col2 = Count_second_col/Count_first_col)
 
-print(hiv_tests_by_year)
-
-# Save the table
-write.csv(hiv_tests_by_year, "hiv_tests_by_year.csv", row.names = FALSE)
-
-# ## differences between excluded and included in longitudinal analysis
-
-# load data
-baseline_analysis_hiv <- read.csv("romania_pwid_hiv_bl.csv")
-romania_pwid_hiv_test <- read.csv("romania_pwid_hiv_test.csv", stringsAsFactors = FALSE)
-n_distinct(romania_pwid_hiv_test$id)
+View(hiv_included_table)
 
 # create included columns
 romania_pwid_hiv_test$included2 <- "Yes"
@@ -456,7 +430,6 @@ print(highest_id_seq)
 # keep rows where appointment_seq equals 1
 baseline_analysis_hiv <- baseline_analysis_hiv %>%
   filter(appointment_seq == 1)
-View(baseline_analysis_hiv)
 
 # change test results to 0 and 1
 baseline_analysis_hiv <- baseline_analysis_hiv %>%
@@ -556,69 +529,10 @@ included_summary_table <- baseline_analysis_hiv %>%
 
 write.csv(included_summary_table, "hiv_included_summary_table.csv", row.names = FALSE)
 
-# tables stratified by gender
-gender_levels <- unique(baseline_analysis_hiv$gender)
+## cox risk factor analysis
 
-included_summary_tables_by_gender <- lapply(gender_levels, function(g) {
-  tab <- baseline_analysis_hiv %>%
-    filter(gender == g) %>%
-    dplyr::select(all_of(vars_to_summarize), included) %>%
-    mutate(across(all_of(vars_to_summarize), as.character)) %>%
-    pivot_longer(
-      cols = all_of(vars_to_summarize),
-      names_to = "Variable",
-      values_to = "Level"
-    ) %>%
-    group_by(Variable, Level, included) %>%
-    summarise(
-      Count = n(),
-      .groups = "drop"
-    ) %>%
-    pivot_wider(
-      names_from = included,
-      values_from = Count,
-      values_fill = 0
-    ) %>%
-    rename(
-      Included_Yes = Yes,
-      Included_No = No
-    ) %>%
-    mutate(
-      Total = Included_Yes + Included_No,
-      Proportion_Included = (Included_Yes / Total) * 100
-    ) %>%
-    group_by(Variable) %>%
-    mutate(
-      ref_level = case_when(
-        Variable == "age_4cat" ~ "<30",
-        TRUE ~ "0"
-      ),
-      ref_yes = Included_Yes[Level == ref_level][1],
-      ref_no = Included_No[Level == ref_level][1],
-      OR = ifelse(Level == ref_level, 1, (Included_Yes / Included_No) / (ref_yes / ref_no)),
-      logOR = ifelse(Level == ref_level, NA, log(OR)),
-      SE_logOR = ifelse(Level == ref_level, NA, sqrt(1/Included_Yes + 1/Included_No + 1/ref_yes + 1/ref_no)),
-      CI_lower = ifelse(Level == ref_level, NA, exp(logOR - 1.96 * SE_logOR)),
-      CI_upper = ifelse(Level == ref_level, NA, exp(logOR + 1.96 * SE_logOR)),
-      num_perc = sprintf("%d (%.1f)", Included_Yes, Proportion_Included),
-      or_formatted = ifelse(
-        is.na(OR), "",
-        sprintf("%.2f (%.2f-%.2f)", OR, CI_lower, CI_upper)
-      ),
-      Gender = g
-    ) %>%
-    ungroup() %>%
-    select(-ref_level, -ref_yes, -ref_no, -logOR, -SE_logOR)
-  tab
-})
-
-for (i in seq_along(gender_levels)) {
-  write.csv(
-    included_summary_tables_by_gender[[i]],
-    paste0("hiv_included_summary_table_gender_", gender_levels[i], ".csv"),
-    row.names = FALSE
-  )
-}
+# load data
+romania_pwid_hiv_test <- read.csv("romania_pwid_hiv_test.csv", stringsAsFactors = FALSE)
 
 ## cox risk factor analysis
 
@@ -626,12 +540,12 @@ for (i in seq_along(gender_levels)) {
 romania_pwid_hiv_test <- read.csv("romania_pwid_hiv_test.csv", stringsAsFactors = FALSE)
 
 # exposures
-exposure_vars <- c("oat_12m", "oat_ever", "sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever", "gender", "age_2cat")
+exposure_vars <- c("oat_12m", "oat_ever", "sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever", "gender", "age_4cat", "syringe_1ml_ever", "syringe_2ml_ever", "drug_type_main", "heroin_12m", "legal_12m", "methadone_12m", "polyconsumer_12m", "syringes_1ml_12m_prior_5cat", "main_drug_injected_4cat")
 
 results_list <- list()
 
 # Relevel binary variables to factors with "No"/"Yes"
-binary_vars <- c("oat_12m", "oat_ever", "sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever")
+binary_vars <- c("oat_12m", "oat_ever", "sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever", "syringe_1ml_ever", "syringe_2ml_ever", "heroin_12m", "legal_12m", "methadone_12m", "polyconsumer_12m")
 for (var in binary_vars) {
   romania_pwid_hiv_test[[var]] <- factor(ifelse(romania_pwid_hiv_test[[var]] == 1, "Yes", "No"), levels = c("No", "Yes"))
 }
@@ -649,7 +563,7 @@ for (var in exposure_vars) {
     cases <- sum(subset_data$hiv_test_rslt == 1, na.rm = TRUE)
     person_years <- sum(subset_data$py, na.rm = TRUE)
     
-    # cox model
+    # Fit Cox model for the variable (overall, not per level)
     formula <- as.formula(paste("Surv(py, hiv_test_rslt) ~", var))
     model <- coxph(formula, data = romania_pwid_hiv_test)
     hr <- exp(coef(model))
@@ -740,8 +654,11 @@ results_female <- run_cox_analysis(romania_pwid_hiv_test_female, "Female")
 results_df_gender <- rbind(results_male, results_female)
 write_xlsx(results_df_gender, "cox_model_results_hiv_by_gender.xlsx")
 
-
 ## longitudinal analysis with Rubin's correction
+
+# load dataframes
+processed_dataframes_hiv <- readRDS("processed_dataframes_hiv.rds")
+processed_dataframes_long_hiv <- readRDS("processed_dataframes_long_hiv.rds")
 
 # sequence hiv_test_rslt by id and identify any IDs with multiple positive hiv_test_rslts
 multiple_positive_ids <- processed_dataframes_long_hiv[[1]] %>%
@@ -755,10 +672,6 @@ print(multiple_positive_ids)
 # rows with multiple positive hiv_test_rslts for verification
 multiple_positive_rows <- processed_dataframes_long_hiv[[1]] %>%
   filter(id %in% multiple_positive_ids$id)
-
-# load dataframes
-processed_dataframes_hiv <- readRDS("processed_dataframes_hiv.rds")
-processed_dataframes_long_hiv <- readRDS("processed_dataframes_long_hiv.rds")
 
 # Count incident infections (hiv_test_rslt == 1) in the first long dataframe
 incident_infections <- sum(processed_dataframes_hiv[[1]]$hiv_test_rslt == 1, na.rm = TRUE)
@@ -993,7 +906,6 @@ rubin_results <- lapply(intervals, function(interval) {
 })
 
 results_df_two_yearly_rubin_hiv <- do.call(rbind, rubin_results)
-print(results_df_two_yearly_rubin_hiv)
 
 # Rubin's rule for overall incidence
 overall_rates <- final_summed_df_hiv$overall_incidence_rate
@@ -1027,7 +939,7 @@ overall_row <- data.frame(
   Mean_person_years = overall_mean_person_years_hiv
 )
 
-# combine with dataframe
+# combine with existing dataframe
 results_df_two_yearly_rubin_hiv <- rbind(overall_row, results_df_two_yearly_rubin_hiv)
 
 # negative incidence rates or bounds to 0.001
@@ -1038,25 +950,30 @@ results_df_two_yearly_rubin_hiv <- results_df_two_yearly_rubin_hiv %>%
     Upper_bound = ifelse(Upper_bound < 0, 0.001, Upper_bound)
   )
 
+print(results_df_two_yearly_rubin_hiv)
+
 # save two-year interval results
 write.csv(results_df_two_yearly_rubin_hiv, "results_df_two_yearly_rubin_hiv.csv", row.names = FALSE)
 
-## rate ratios for trends in HIV incidence
+## rate ratios for trends in incidence
 
 # load two-yearly interval data
 results_df_two_yearly_rubin_hiv <- read.csv("results_df_two_yearly_rubin_hiv.csv", stringsAsFactors = FALSE)
-View(results_df_two_yearly_rubin_hiv)
 
-# convert to numeric
+# numeric columns
 results_df_two_yearly_rubin_hiv$Mean_hiv_infections <- as.numeric(results_df_two_yearly_rubin_hiv$Mean_hiv_infections)
 results_df_two_yearly_rubin_hiv$Mean_person_years <- as.numeric(results_df_two_yearly_rubin_hiv$Mean_person_years)
 
-# Set 2013–2014 as reference
+# assign 2013-2014 as reference category
 ref_idx <- which(results_df_two_yearly_rubin_hiv$Interval == "2013-2014")
+
+cases <- results_df_two_yearly_rubin_hiv$Mean_hiv_infections
+py <- results_df_two_yearly_rubin_hiv$Mean_person_years
+
 ref_cases <- cases[ref_idx]
 ref_py <- py[ref_idx]
 
-# rate ratio function using Poisson approximation
+# rate ratio using Poisson approximation
 calculate_rr <- function(c1, py1, c2, py2) {
   if (c1 == 0 || py1 == 0 || c2 == 0 || py2 == 0) {
     return(c(NA, NA, NA))
@@ -1068,7 +985,7 @@ calculate_rr <- function(c1, py1, c2, py2) {
   c(rr, lower, upper)
 }
 
-# results df
+# dataframe
 rr_exact <- data.frame(
   Interval = results_df_two_yearly_rubin_hiv$Interval,
   Rate_Ratio = NA,
@@ -1076,7 +993,7 @@ rr_exact <- data.frame(
   Upper_95CI = NA
 )
 
-# rate ratios
+# loop through intervals
 for (i in seq_along(cases)) {
   if (i == ref_idx) {
     rr_exact[i, 2:4] <- c(1, 1, 1)
@@ -1085,10 +1002,17 @@ for (i in seq_along(cases)) {
   }
 }
 
+# format RR
+rr_exact$RR_95CI <- ifelse(
+  is.na(rr_exact$Rate_Ratio),
+  NA,
+  sprintf("%.2f (%.2f-%.2f)", rr_exact$Rate_Ratio, rr_exact$Lower_95CI, rr_exact$Upper_95CI)
+)
+
 # combine results
 results_df_two_yearly_rubin_hiv <- cbind(results_df_two_yearly_rubin_hiv, rr_exact[, -1])
 
-# save rate ratios
+# save two-year interval results
 write.csv(results_df_two_yearly_rubin_hiv, "results_df_two_yearly_rubin_hiv_rr.csv", row.names = FALSE)
 
 # load two-year interval results

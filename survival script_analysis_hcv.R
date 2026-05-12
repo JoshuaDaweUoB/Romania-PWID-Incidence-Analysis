@@ -68,9 +68,10 @@ baseline_hcv <- baseline_analysis_hcv %>%
     oat_ever = as.factor(oat_ever),
     sex_work_ever_4cat = as.factor(sex_work_ever_4cat),
     homeless_ever = as.factor(homeless_ever),
+    drug_type_main = as.factor(drug_type_main),
     hcv_test_rslt_bin = ifelse(hcv_test_rslt == "Positive", 1, 0)
   )
-table(baseline_analysis_hcv$sex_work_ever_4cat)
+table(baseline_analysis_hcv$drug_type_main, useNA = "ifany")
 
 # create unadjusted summary table
 vars_order <- c(
@@ -79,7 +80,8 @@ vars_order <- c(
   "ethnic_roma_ever",
   "sex_work_ever_4cat",
   "homeless_ever",
-  "oat_ever"
+  "oat_ever",
+  "drug_type_main"
 )
 
 hcv_summary_table <- baseline_hcv %>%
@@ -114,6 +116,7 @@ hcv_summary_table <- baseline_hcv %>%
       Variable == "gender" ~ "Female",
       Variable == "test_year" ~ "2013",
       Variable == "sex_work_ever_4cat" ~ "No sex work - female",
+      Variable == "drug_type_main" ~ "Heroin",
       TRUE ~ "0"
     ),
     ref_pos = hcv_Positive[Level == ref_level][1],
@@ -125,7 +128,7 @@ hcv_summary_table <- baseline_hcv %>%
 # unadjusted PRs
 
 # exposures
-exposures <- c("gender", "age_4cat", "ethnic_roma_ever", "sex_work_ever_4cat", "homeless_ever", "oat_ever")
+exposures <- c("gender", "age_4cat", "ethnic_roma_ever", "sex_work_ever_4cat", "homeless_ever", "oat_ever", "drug_type_main")
 
 unadj_pr_list <- lapply(exposures, function(var) {
 
@@ -197,16 +200,16 @@ model1_pr_all <- bind_rows(results_list)
 hcv_summary_table <- hcv_summary_table %>%
   left_join(model1_pr_all, by = c("Variable", "Level"))
 
-# model adjusting for sex, age, roma, homelessness, oat
+# model adjusting for sex, age, roma, homelessness, oat, drug type
 
-adj2_vars <- c("age_4cat", "gender", "ethnic_roma_ever", "homeless_ever", "oat_ever")
+adj2_vars <- c("age_4cat", "gender", "ethnic_roma_ever", "homeless_ever", "oat_ever", "drug_type_main")
 
 results_list <- list()
 
 for (i in adj2_vars) {
 
   model <- glm(
-    hcv_test_rslt_bin ~ age_4cat + gender + ethnic_roma_ever + homeless_ever + oat_ever,
+    hcv_test_rslt_bin ~ age_4cat + gender + ethnic_roma_ever + homeless_ever + oat_ever + drug_type_main,
     data = baseline_hcv,
     family = poisson(link = "log")
   )
@@ -241,16 +244,16 @@ model2_pr_all <- bind_rows(results_list)
 hcv_summary_table <- hcv_summary_table %>%
   left_join(model2_pr_all, by = c("Variable", "Level"))
 
-# model adjusting for age, roma, sex work, homelessness, oat
+# model adjusting for age, roma, sex work, homelessness, oat, drug type
 
-adj3_vars <- c("age_4cat", "ethnic_roma_ever", "sex_work_ever_4cat", "homeless_ever", "oat_ever")
+adj3_vars <- c("age_4cat", "ethnic_roma_ever", "sex_work_ever_4cat", "homeless_ever", "oat_ever", "drug_type_main")
 
 results_list <- list()
 
 for (i in adj3_vars) {
 
   model <- glm(
-    hcv_test_rslt_bin ~ age_4cat + sex_work_ever_4cat + ethnic_roma_ever + homeless_ever + oat_ever,
+    hcv_test_rslt_bin ~ age_4cat + sex_work_ever_4cat + ethnic_roma_ever + homeless_ever + oat_ever + drug_type_main,
     data = baseline_hcv,
     family = poisson(link = "log")
   )

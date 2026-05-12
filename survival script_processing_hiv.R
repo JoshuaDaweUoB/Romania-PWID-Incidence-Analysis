@@ -1,5 +1,5 @@
 ## load packages
-pacman::p_load(dplyr, tidyr, withr, lubridate, MASS, writexl, readxl, arsenal, survival, broom, ggplot2, purrr, tableone)
+pacman::p_load(dplyr, tidyr, withr, lubridate, MASS, writexl, readxl, arsenal, survival, broom, ggplot2, purrr, tableone, stringr)
 
 ## set wd
 setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/Romania PWID/data")
@@ -40,11 +40,6 @@ romania_pwid_treatment <- romania_pwid_treatment %>%
 ## load data
 romania_pwid_raw <- read_excel("ARAS DATA IDU 2013-2022.xlsx")
 
-## number pwid who were hiv & hcv tested
-romania_pwid_tested <- romania_pwid_raw %>%
-  filter(!is.na(hiv_test_rslt) | !is.na(hcv_test_rslt))
-table(romania_pwid_tested$hiv_test_rslt, romania_pwid_tested$hcv_test_rslt, useNA="ifany")
-
 # append treatment df to raw dataframe
 missing_cols <- setdiff(names(romania_pwid_raw), names(romania_pwid_treatment))
 romania_pwid_treatment[missing_cols] <- NA
@@ -83,6 +78,125 @@ romania_pwid_hiv <- romania_pwid_hiv %>%
     age >= 40 ~ "40+"
   ))
 
+# syringe type
+romania_pwid_hiv <- romania_pwid_hiv %>%
+  mutate(
+    syringe_1ml_ever_bin = case_when(
+      syringes_distributed_1ml > 0 ~ 1,
+      is.na(syringes_distributed_1ml) ~ 0
+    ),
+    syringe_2ml_ever_bin = case_when(
+      syringes_distributed_2ml > 0 ~ 1,
+      is.na(syringes_distributed_2ml) ~ 0
+    )
+  )
+
+# make syringe type time varying
+romania_pwid_hiv <- romania_pwid_hiv %>%
+  arrange(id, appointment_dte) %>%
+  group_by(id) %>%
+  mutate(
+    syringe_1ml_ever = cummax(if_else(syringe_1ml_ever_bin == 1, 1, 0)),
+    syringe_2ml_ever = cummax(if_else(syringe_2ml_ever_bin == 1, 1, 0))
+  ) %>%
+  ungroup()
+
+# one year prior to test
+romania_pwid_hiv <- romania_pwid_hiv %>%
+  mutate(
+    hiv_test_dte = if_else(!is.na(hiv_test_rslt), as.Date(appointment_dte), as.Date(NA)),
+    hiv_test_dte_12m_prev = hiv_test_dte - years(1)
+  )
+
+# sum number of syringes in past year by id
+romania_pwid_hiv <- romania_pwid_hiv %>%
+  group_by(id) %>%
+  mutate(
+    syringes_1ml_12m_prior = sum(
+      syringes_distributed_1ml[appointment_dte >= hiv_test_dte_12m_prev &
+                               appointment_dte <= hiv_test_dte],
+      na.rm = TRUE
+    ),
+    syringes_2ml_12m_prior = sum(
+      syringes_distributed_2ml[appointment_dte >= hiv_test_dte_12m_prev &
+                               appointment_dte <= hiv_test_dte],
+      na.rm = TRUE
+    )
+  ) %>%
+  ungroup()
+
+romania_pwid_hiv <- romania_pwid_hiv %>%
+  mutate(syringes_1ml_12m_prior_5cat = case_when(
+        syringes_1ml_12m_prior < 21 ~ "0-20",
+        syringes_1ml_12m_prior > 20 & syringes_1ml_12m_prior < 101 ~ "21-100",
+        syringes_1ml_12m_prior > 100 & syringes_1ml_12m_prior < 251 ~ "101-250",
+        syringes_1ml_12m_prior > 250 ~ "251+",
+        ))
+
+# main drug injected
+table(trimws(as.character(romania_pwid_hiv$drug_type)), useNA = "ifany")
+
+romania_pwid_hiv <- romania_pwid_hiv %>%
+  mutate(
+    drug_type_main = case_when(
+      drug_type == "0" | is.na(drug_type) ~ "Undeclared",
+      str_detect(drug_type, "\\+") | str_length(drug_type) > 1 & str_detect(drug_type, "[HLM]") ~ "Polyconsumer",
+      drug_type == "1" | drug_type == "H" ~ "Heroin",
+      drug_type == "2" | drug_type == "L" ~ "Legal",
+      drug_type == "3" ~ "Polyconsumer",
+      drug_type == "4" ~ "Other drugs",
+      drug_type == "5" | drug_type == "M" ~ "Methadone",
+      TRUE ~ "Other"
+    )
+  )
+
+table(romania_pwid_hiv$drug_type_main, romania_pwid_hiv$drug_type, useNA = "ifany")
+
+# make drug indicators for past 12 months before test 
+romania_pwid_hiv <- romania_pwid_hiv %>%
+  group_by(id) %>%
+  mutate(
+    heroin_12m = as.integer(any(drug_type_main == "Heroin" &
+                                !is.na(hiv_test_dte) &
+                                appointment_dte >= hiv_test_dte_12m_prev &
+                                appointment_dte <= hiv_test_dte,
+                                na.rm = TRUE)),
+    legal_12m = as.integer(any(drug_type_main == "Legal" &
+                               !is.na(hiv_test_dte) &
+                               appointment_dte >= hiv_test_dte_12m_prev &
+                               appointment_dte <= hiv_test_dte,
+                               na.rm = TRUE)),
+    methadone_12m = as.integer(any(drug_type_main == "Methadone" &
+                                   !is.na(hiv_test_dte) &
+                                   appointment_dte >= hiv_test_dte_12m_prev &
+                                   appointment_dte <= hiv_test_dte,
+                                   na.rm = TRUE)),
+    otherdrugs_12m = as.integer(any(drug_type_main == "Other drugs" &
+                                    !is.na(hiv_test_dte) &
+                                    appointment_dte >= hiv_test_dte_12m_prev &
+                                    appointment_dte <= hiv_test_dte,
+                                    na.rm = TRUE)),
+    undeclared_12m = as.integer(any(drug_type_main == "Undeclared" &
+                                    !is.na(hiv_test_dte) &
+                                    appointment_dte >= hiv_test_dte_12m_prev &
+                                    appointment_dte <= hiv_test_dte,
+                                    na.rm = TRUE)),
+    polyconsumer_12m = as.integer(any(drug_type_main == "Polyconsumer" &
+                                    !is.na(hiv_test_dte) &
+                                    appointment_dte >= hiv_test_dte_12m_prev &
+                                    appointment_dte <= hiv_test_dte,
+                                    na.rm = TRUE))                                    
+  ) %>%
+  ungroup()
+
+table(romania_pwid_hiv$heroin_12m, useNA = "ifany")
+table(romania_pwid_hiv$methadone_12m, useNA = "ifany")
+table(romania_pwid_hiv$otherdrugs_12m, useNA = "ifany")
+table(romania_pwid_hiv$undeclared_12m, useNA = "ifany")
+table(romania_pwid_hiv$legal_12m, useNA = "ifany")
+table(romania_pwid_hiv$polyconsumer_12m, useNA = "ifany")
+table(romania_pwid_hiv$syringes_1ml_12m_prior_5cat, useNA = "ifany")
+
 # sequence negative hiv tests
 
 # create row ids
@@ -115,15 +229,28 @@ romania_pwid_hiv <- romania_pwid_hiv %>%
 romania_pwid_hiv <- romania_pwid_hiv %>%
   mutate(hiv_test_dte = dplyr::if_else(hiv_test_rslt %in% c(1, 2), appointment_dte, as.Date(NA)))
 
-# first recorded hcv test
+# first recorded hiv test
 first_test <- baseline_analysis_hiv %>%
   summarise(hiv_test_dte = min(hiv_test_dte, na.rm = TRUE))
 print(first_test)
 
-# last recorded hcv test
+# last recorded hiv test
 last_test <- baseline_analysis_hiv %>%
   summarise(hiv_test_dte = max(hiv_test_dte, na.rm = TRUE))
 print(last_test)
+
+# sequence of negative tests
+hiv_neg_test_seq <- romania_pwid_hiv %>%
+  filter(hiv_test_rslt == 1) %>%
+  arrange(id, appointment_dte) %>%
+  group_by(id) %>%
+  mutate(neg_hiv_seq = row_number()) %>%
+  ungroup() %>%
+  dplyr::select(row_id, neg_hiv_seq) 
+
+# merge back using row_id
+romania_pwid_hiv <- romania_pwid_hiv %>%
+  left_join(hiv_neg_test_seq, by = "row_id")
 
 # create last_hiv_neg_test_dte
 romania_pwid_hiv <- romania_pwid_hiv %>%
@@ -151,7 +278,7 @@ romania_pwid_hiv <- romania_pwid_hiv %>%
 # recode hiv ever
 romania_pwid_hiv <- romania_pwid_hiv %>%
   group_by(id) %>%
-  mutate(hiv_ever = ifelse(any(hiv == 1, na.rm = TRUE), 1, 0)) %>%
+  mutate(hiv_ever = ifelse(any(hiv_test_rslt == 2, na.rm = TRUE), 1, 0)) %>%
   ungroup() %>%
   mutate(hiv_ever = factor(hiv_ever, levels = c(0, 1)))
 
@@ -210,7 +337,7 @@ romania_pwid_hiv <- romania_pwid_hiv %>%
     msm_current, msm_ever,
     homeless_current, homeless_ever,
     ethnic_roma, ethnic_roma_ever,
-    hiv, hiv_ever,
+    hiv_test_rslt, hiv_ever,
     everything()
   )
 
@@ -334,6 +461,51 @@ for (pair in exposure_pairs) {
     summarise(n_ids = n_distinct(id))
   cat(pair[1], "== 1 &", pair[2], "is NA: n_ids =", count$n_ids, "\n")
 }
+
+table(romania_pwid_hiv$sex_work_ever, useNA = "ifany")
+
+# save overall cohort
+
+# id sequence
+overall_data <- romania_pwid_hiv %>%
+  group_by(id) %>%
+  arrange(id, appointment_dte) %>%
+  mutate(id_seq = row_number()) %>%
+  ungroup()
+
+# restrict to one row per id
+overall_data <- romania_pwid_hiv %>%
+  filter(id_seq == 1)
+
+# relevel sex work variable
+overall_data <- overall_data %>%
+  mutate(
+    sex_work_ever_4cat = factor(
+      case_when(
+      sex_work_ever == 0 & gender == "Female" ~ 0,
+      sex_work_ever == 1 & gender == "Female" ~ 1, 
+      sex_work_ever == 0 & gender == "Male" ~ 2,
+      sex_work_ever == 1 & gender == "Male" ~ 3
+    ),
+    levels = c(0, 1, 2, 3), 
+    labels = c("No sex work - female", "Sex work - female", "No sex work - male", "Sex work - male")
+  ))
+
+# restrict to columns of interest
+overall_data <- overall_data %>%
+  select(id, gender, age_4cat, ethnic_roma_ever, sex_work_ever_4cat, homeless_ever, oat_ever, drug_type_main)
+
+# generate a table
+table_vars <- c("gender", "age_4cat", "ethnic_roma_ever", "sex_work_ever_4cat", "homeless_ever", "oat_ever", "drug_type_main")
+
+overall_table <- CreateTableOne(
+  vars = table_vars,
+  data = overall_data
+)
+print(overall_table, showAllLevels = TRUE)
+
+# save overall data
+saveRDS(overall_data, file = "overall_data.rds")
 
 ## baseline hiv cohort
 
@@ -484,9 +656,21 @@ romania_pwid_hiv_test <- romania_pwid_hiv %>%
     days_risk = as.numeric(appointment_dte_end - appointment_dte_start),
     py = days_risk / 365.25
   ) %>%
-  dplyr::select(
-    id, appointment_dte_start, appointment_dte_end, hiv_test_rslt_start, hiv_test_rslt_end,
-    days_risk, py, oat_12m, oat_ever, sex_work_12m, sex_work_ever, msm_12m, msm_ever, homeless_12m, homeless_ever, ethnic_roma_ever, hiv_ever, gender, age_4cat, age_2cat
+    dplyr::select(
+    id, appointment_dte_start, appointment_dte_end,
+    hiv_test_rslt_start, hiv_test_rslt_end,
+    days_risk, py,
+    oat_12m, oat_ever,
+    sex_work_12m, sex_work_ever,
+    msm_12m, msm_ever,
+    homeless_12m, homeless_ever,
+    ethnic_roma_ever, hiv_ever,
+    gender, age_4cat, age_2cat,
+    syringe_1ml_ever, syringe_2ml_ever,
+    syringes_1ml_12m_prior, syringes_2ml_12m_prior,
+    syringes_1ml_12m_prior_5cat,
+    drug_type_main,
+    heroin_12m, legal_12m, methadone_12m, polyconsumer_12m, drug_type_main
   ) %>%
   rename(
     appointment_dte = appointment_dte_start,
@@ -522,8 +706,8 @@ romania_pwid_hiv_test <- romania_pwid_hiv_test %>%
     appointment_dte_lag = as.Date(appointment_dte_lag)
   )
 
-# List of exposure variables 
-exposure_vars <- c("oat_12m", "oat_ever", "sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever", "gender", "age_4cat")
+# exposure variables 
+exposure_vars <- c("oat_12m", "oat_ever", "sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever", "gender", "age_4cat", "syringe_1ml_ever", "syringe_2ml_ever", "syringes_1ml_12m_prior", "syringes_2ml_12m_prior", "drug_type_main", "heroin_12m", "legal_12m", "methadone_12m", "polyconsumer_12m", "syringes_1ml_12m_prior_5cat", "drug_type_main")
 
 # table of exposure variables
 exposure_vars <- CreateTableOne(vars = exposure_vars, data = romania_pwid_hiv_test)
@@ -533,7 +717,7 @@ print(exposure_vars)
 # check that dates are correctly lagged
 View(romania_pwid_hiv_test)
 
-# Save testing data
+# testing data
 write.csv(romania_pwid_hiv_test, "romania_pwid_hiv_test.csv")
 
 ## overall incidence estimate
