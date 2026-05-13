@@ -159,3 +159,113 @@ combined_prevalence_plot <- ggplot(
 ggsave("plots/combined_hcv_hiv_prevalence_plot.png", plot = combined_prevalence_plot, width = 10, height = 6, dpi = 300)
 
 View(combined_df)
+
+## hcv and hiv combined incidence figure - sensitivity analysis 1
+
+# load both datasets
+results_hiv_s1 <- read.csv("two_yearly_results_long_midpoint_hiv.csv", stringsAsFactors = FALSE)
+results_hcv_s1 <- read.csv("two_yearly_results_long_midpoint_hcv.csv", stringsAsFactors = FALSE)
+
+# rename columns
+names(results_hiv_s1)[names(results_hiv_s1) == "total_hiv_infections"] <- "infections"
+names(results_hcv_s1)[names(results_hcv_s1) == "total_hiv_infections"] <- "infections"
+names(results_hcv_s1)[names(results_hcv_s1) == "total_hcv_infections"] <- "infections"
+
+# add disease identifier and combine
+results_hiv_s1$Disease <- "HIV"
+results_hcv_s1$Disease <- "HCV"
+
+# combine
+combined_df_s1 <- rbind(results_hiv_s1, results_hcv_s1)
+
+# Combined plot
+combined_incidence_plot_s1 <- ggplot(
+  combined_df_s1,
+  aes(x = two_year_interval,
+      y = incidence_rate,
+      group = Disease)
+) +
+  geom_line(aes(linetype = Disease),
+            color = "black",
+            linewidth = 0.8) +
+  geom_point(shape = 18,
+             size = 3,
+             color = "black") +
+  geom_ribbon(aes(ymin = lower_bound,
+                  ymax = upper_bound,
+                  fill = Disease),
+                  alpha = .2, color = NA) +
+  scale_x_discrete(expand = expansion(mult = c(0, 0))) +                  
+  scale_linetype_manual(values = c("HIV" = "solid",
+                                   "HCV" = "dashed")) +
+  theme_minimal(base_size = 14) +
+  labs(
+    x = "Two-yearly Interval",
+    y = "Incidence Rate per 100 Person-Years",
+    linetype = "Disease"
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.line.x = element_line(color = "black"),
+    axis.line.y = element_line(color = "black"),    
+    panel.grid.minor = element_blank(),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA),
+    legend.position = "bottom"
+  )
+
+ggsave("plots/combined_hcv_hiv_incidence_plot_s1.png", plot = combined_incidence_plot_s1, width = 10, height = 6, dpi = 300)
+
+# sensitivity analysis two
+
+results_hcv_s2 <- read.csv("two_yearly_results_first_dataframe_hcv.csv", stringsAsFactors = FALSE)
+results_hiv_s2 <- read.csv("two_yearly_results_first_dataframe_hiv.csv", stringsAsFactors = FALSE)
+
+# rename columns
+names(results_hiv_s2)[names(results_hiv_s2) == "total_hiv_infections"] <- "infections"
+names(results_hcv_s2)[names(results_hcv_s2) == "total_hcv_infections"] <- "infections"
+
+# add disease identifier and combine
+results_hiv_s2$Disease <- "HIV"
+results_hcv_s2$Disease <- "HCV"
+
+# combine
+combined_df_s2 <- rbind(results_hiv_s2, results_hcv_s2)
+
+# Combined plot
+combined_incidence_plot_s2 <- ggplot(
+  combined_df_s2,
+  aes(x = two_year_interval,
+      y = incidence_rate,
+      group = Disease)
+) +
+  geom_line(aes(linetype = Disease),
+            color = "black",
+            linewidth = 0.8) +
+  geom_point(shape = 18,
+             size = 3,
+             color = "black") +
+  geom_ribbon(aes(ymin = lower_bound,
+                  ymax = upper_bound,
+                  fill = Disease),
+                  alpha = .2, color = NA) +
+  scale_x_discrete(expand = expansion(mult = c(0, 0))) +                  
+  scale_linetype_manual(values = c("HIV" = "solid",
+                                   "HCV" = "dashed")) +
+  theme_minimal(base_size = 14) +
+  labs(
+    x = "Two-yearly Interval",
+    y = "Incidence Rate per 100 Person-Years",
+    linetype = "Disease"
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.line.x = element_line(color = "black"),
+    axis.line.y = element_line(color = "black"),    
+    panel.grid.minor = element_blank(),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA),
+    legend.position = "bottom"
+  )
+
+ggsave("plots/combined_hcv_hiv_incidence_plot_s2.png", plot = combined_incidence_plot_s2, width = 10, height = 6, dpi = 300)

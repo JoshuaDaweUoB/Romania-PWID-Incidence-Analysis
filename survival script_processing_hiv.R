@@ -652,7 +652,7 @@ upper <- (qchisq(0.975, 2 * (cases + 1)) / 2) / person_time * 100
 cat("hiv Incidence Rate:", round(ir, 2), "per 100 PY (95% CI:", round(lower, 2), "-", round(upper, 2), 
     "| Cases:", cases, "| Person-years:", round(person_time, 2), ")\n")
 
-## random-point sampling with 10000 iterations approach
+## random-point sampling with 10 iterations approach
 
 # seroconversion intervals
 seroconversion_intervals <- romania_pwid_hiv_test %>%
@@ -662,10 +662,10 @@ seroconversion_intervals <- romania_pwid_hiv_test %>%
 romania_pwid_hiv_test_iterations <- seroconversion_intervals %>%
   rowwise() %>%
   mutate(
-    iteration = list(1:10000),
+    iteration = list(1:10),
     random_infection_dtes = list(
       as.Date(
-        runif(10000,
+        runif(10,
               min = as.numeric(appointment_dte),
               max = as.numeric(appointment_dte_lag)),
         origin = "1970-01-01"
@@ -684,7 +684,7 @@ romania_pwid_hiv_test_iterations <- seroconversion_intervals %>%
 # always-negative intervals
 romania_pwid_hiv_test_negatives <- romania_pwid_hiv_test %>%
   filter(hiv_test_rslt == 0) %>%
-  tidyr::crossing(iteration = 1:10000) %>%
+  tidyr::crossing(iteration = 1:10) %>%
   mutate(
     imputed_infection_dte = NA,
     days_risk = as.numeric(days_risk),
@@ -707,7 +707,7 @@ romania_pwid_hiv_test_iterations <- romania_pwid_hiv_test_iterations %>%
 # only one negative interval per id
 romania_pwid_hiv_test_negatives <- romania_pwid_hiv_test %>%
   filter(hiv_test_rslt == 0) %>%
-  tidyr::crossing(iteration = 1:10000) %>%
+  tidyr::crossing(iteration = 1:10) %>%
   mutate(
     imputed_infection_dte = NA,
     days_risk = as.numeric(days_risk),
@@ -748,9 +748,9 @@ processed_dataframes_hiv <- list()
 # years to create columns
 required_years <- 2013:2022
 
-# loop 10000 iterations
-for (i in 1:10000) {
-  cat("Processing iteration", i, "of", 10000, "\n")
+# loop 10 iterations
+for (i in 1:10) {
+  cat("Processing iteration", i, "of", 10, "\n")
   
   # dataframe for the current iteration
   df <- split_dataframes[[i]]

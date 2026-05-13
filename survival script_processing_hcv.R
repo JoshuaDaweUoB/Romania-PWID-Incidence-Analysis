@@ -662,10 +662,10 @@ seroconversion_intervals <- romania_pwid_hcv_test %>%
 romania_pwid_hcv_test_iterations <- seroconversion_intervals %>%
   rowwise() %>%
   mutate(
-    iteration = list(1:10000),
+    iteration = list(1:10),
     random_infection_dtes = list(
       as.Date(
-        runif(10000,
+        runif(10,
               min = as.numeric(appointment_dte),
               max = as.numeric(appointment_dte_lag)),
         origin = "1970-01-01"
@@ -684,7 +684,7 @@ romania_pwid_hcv_test_iterations <- seroconversion_intervals %>%
 # always-negative intervals
 romania_pwid_hcv_test_negatives <- romania_pwid_hcv_test %>%
   filter(hcv_test_rslt == 0) %>%
-  tidyr::crossing(iteration = 1:10000) %>%
+  tidyr::crossing(iteration = 1:10) %>%
   mutate(
     imputed_infection_dte = NA,
     days_risk = as.numeric(days_risk),
@@ -707,7 +707,7 @@ romania_pwid_hcv_test_iterations <- romania_pwid_hcv_test_iterations %>%
 # only one negative interval per id
 romania_pwid_hcv_test_negatives <- romania_pwid_hcv_test %>%
   filter(hcv_test_rslt == 0) %>%
-  tidyr::crossing(iteration = 1:10000) %>%
+  tidyr::crossing(iteration = 1:10) %>%
   mutate(
     imputed_infection_dte = NA,
     days_risk = as.numeric(days_risk),
@@ -749,8 +749,8 @@ processed_dataframes_hcv <- list()
 required_years <- 2013:2022
 
 # loop 10000 iterations
-for (i in 1:10000) {
-  cat("Processing iteration", i, "of", 10000, "\n")
+for (i in 1:10) {
+  cat("Processing iteration", i, "of", 10, "\n")
   
   # dataframe for the current iteration
   df <- split_dataframes[[i]]

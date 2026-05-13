@@ -5,7 +5,7 @@ pacman::p_load(dplyr, tidyr, withr, lubridate, MASS, writexl, readxl, arsenal, s
 setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/Romania PWID/data")
 
 ## load data
-midpoint_dataframe <- read.csv("romania_pwid_hcv_test.csv")
+midpoint_dataframe <- read.csv("romania_pwid_hiv_test.csv")
 
 # Ensure appointment_dte and appointment_dte_lag are in Date format
 midpoint_dataframe <- midpoint_dataframe %>%
@@ -58,19 +58,19 @@ required_years <- 2013:2022
 
 # Ensure all required columns are present
 for (year in required_years) {
-  column_name <- paste0("hcv_test_", year)
+  column_name <- paste0("hiv_test_", year)
   if (!(column_name %in% names(midpoint_dataframe))) {
     midpoint_dataframe[[column_name]] <- 0  # Initialize the column with 0
   }
 }
 
-# Populate the hcv_test_20xx columns based on midpoint_year and hcv_test_rslt
+# Populate the hiv_test_20xx columns based on midpoint_year and hiv_test_rslt
 for (year in required_years) {
-  column_name <- paste0("hcv_test_", year)
+  column_name <- paste0("hiv_test_", year)
   midpoint_dataframe[[column_name]] <- ifelse(
     !is.na(midpoint_dataframe$midpoint_year) &  # Ensure midpoint_year is not NA
     midpoint_dataframe$midpoint_year == year & 
-    midpoint_dataframe$hcv_test_rslt == 1,
+    midpoint_dataframe$hiv_test_rslt == 1,
     1,
     midpoint_dataframe[[column_name]]  # Retain the existing value if the condition is not met
   )
@@ -109,15 +109,15 @@ midpoint_dataframe_long <- midpoint_dataframe %>%
 midpoint_dataframe_long <- midpoint_dataframe_long %>%
   filter(year != "" & !is.na(year))  # Remove rows where 'year' is empty or NA
 
-# Recode hcv_test_rslt to 0 if the 'year' column does not equal the 'midpoint_year' column
+# Recode hiv_test_rslt to 0 if the 'year' column does not equal the 'midpoint_year' column
 midpoint_dataframe_long <- midpoint_dataframe_long %>%
   mutate(
-    hcv_test_rslt = ifelse(year == midpoint_year, hcv_test_rslt, 0)
+    hiv_test_rslt = ifelse(year == midpoint_year, hiv_test_rslt, 0)
   )
 
-# Recode the hcv_test_rslt_20xx columns to 0 if the column 'year' does not equal 'midpoint_year'
+# Recode the hiv_test_rslt_20xx columns to 0 if the column 'year' does not equal 'midpoint_year'
 for (year in required_years) {
-  column_name <- paste0("hcv_test_", year)
+  column_name <- paste0("hiv_test_", year)
   if (column_name %in% colnames(midpoint_dataframe_long)) {
     midpoint_dataframe_long[[column_name]] <- ifelse(
       midpoint_dataframe_long$year == midpoint_dataframe_long$midpoint_year,
@@ -148,13 +148,13 @@ two_yearly_results_midpoint <- midpoint_dataframe_long %>%
   filter(!is.na(two_year_interval)) %>%  # Exclude rows without a valid interval
   group_by(two_year_interval) %>%
   summarise(
-    total_hcv_infections = sum(hcv_test_rslt, na.rm = TRUE),  # Total cases
+    total_hiv_infections = sum(hiv_test_rslt, na.rm = TRUE),  # Total cases
     total_person_years = sum(time_at_risk, na.rm = TRUE),     # Total person-years
-    incidence_rate = (total_hcv_infections / total_person_years) * 100,  # Incidence rate per 100 person-years
-    lower_bound = (total_hcv_infections / total_person_years) * 100 - 
-                  1.96 * sqrt(total_hcv_infections / (total_person_years^2)) * 100,  # Lower 95% CI
-    upper_bound = (total_hcv_infections / total_person_years) * 100 + 
-                  1.96 * sqrt(total_hcv_infections / (total_person_years^2)) * 100   # Upper 95% CI
+    incidence_rate = (total_hiv_infections / total_person_years) * 100,  # Incidence rate per 100 person-years
+    lower_bound = (total_hiv_infections / total_person_years) * 100 - 
+                  1.96 * sqrt(total_hiv_infections / (total_person_years^2)) * 100,  # Lower 95% CI
+    upper_bound = (total_hiv_infections / total_person_years) * 100 + 
+                  1.96 * sqrt(total_hiv_infections / (total_person_years^2)) * 100   # Upper 95% CI
   )
 
 # View the results
@@ -162,10 +162,10 @@ print(two_yearly_results_midpoint)
 View(two_yearly_results_midpoint)
 
 # Save the two-yearly results to a CSV file
-write.csv(two_yearly_results_midpoint, "two_yearly_results_long_midpoint_hcv.csv", row.names = FALSE)
+write.csv(two_yearly_results_midpoint, "two_yearly_results_long_midpoint_hiv.csv", row.names = FALSE)
 
 # Create a plot for the two-yearly interval results
-HCV_incidence_plot_midpoint <- ggplot(two_yearly_results_midpoint, aes(x = two_year_interval, y = incidence_rate)) +
+hiv_incidence_plot_midpoint <- ggplot(two_yearly_results_midpoint, aes(x = two_year_interval, y = incidence_rate)) +
   geom_line(group = 1, color = "gray", linewidth = 0.8, linetype = "solid") +  # Make the line gray and adjust thickness
   geom_point(shape = 18, size = 4, color = "gray") +  # Make the diamonds (points) gray
   geom_errorbar(aes(ymin = lower_bound, ymax = upper_bound), width = 0.1, color = "black", size = 0.8) +  # Adjust error bar width and size
@@ -186,7 +186,7 @@ HCV_incidence_plot_midpoint <- ggplot(two_yearly_results_midpoint, aes(x = two_y
   )
 
 # Save the plot as a PNG file in the "plots" folder with the suffix "_midpoint"
-ggsave("plots/HCV_incidence_plot_midpoint_long.png", plot = HCV_incidence_plot_midpoint, width = 10, height = 6, dpi = 300)
+ggsave("plots/hiv_incidence_plot_midpoint_long.png", plot = hiv_incidence_plot_midpoint, width = 10, height = 6, dpi = 300)
 
 # Calculate the incidence rate
 cases <- 94
@@ -210,20 +210,20 @@ cat("95% CI: [", lower_bound, ", ", upper_bound, "]\n")
 cat("Processing the first dataframe\n")
 
 # Load the first dataframe
-processed_dataframes_long <- readRDS("processed_dataframes_long_hcv.rds")
+processed_dataframes_long <- readRDS("processed_dataframes_long_hiv.rds")
 midpoint_dataframe <- processed_dataframes_long[[1]]
 
-# Replace midpoint_year with NA if hcv_test_rslt is negative
+# Replace midpoint_year with NA if hiv_test_rslt is negative
 midpoint_dataframe <- midpoint_dataframe %>%
   mutate(
-    midpoint_year = ifelse(hcv_test_rslt == 0, NA, midpoint_year)  # Replace midpoint_year with NA if hcv_test_rslt == 0
+    midpoint_year = ifelse(hiv_test_rslt == 0, NA, midpoint_year)  # Replace midpoint_year with NA if hiv_test_rslt == 0
   )
 
 # Create a dataframe with rows for years 2013 to 2022 and calculate cases and years_at_risk
 yearly_data <- midpoint_dataframe %>%
   group_by(year) %>%
   summarise(
-    cases = sum(hcv_test_rslt, na.rm = TRUE),        # Sum of hcv_test_rslt for each year
+    cases = sum(hiv_test_rslt, na.rm = TRUE),        # Sum of hiv_test_rslt for each year
     years_at_risk = sum(time_at_risk, na.rm = TRUE)  # Sum of time_at_risk for each year
   ) %>%
   filter(year %in% 2013:2022)  # Ensure only rows for years 2013 to 2022 are included
@@ -238,7 +238,7 @@ yearly_data <- yearly_data %>%
   )
 
 # Save the yearly data to a CSV file
-write.csv(yearly_data, "yearly_results_first_dataframe_hcv.csv", row.names = FALSE)
+write.csv(yearly_data, "yearly_results_first_dataframe_hiv.csv", row.names = FALSE)
 
 # Define two-yearly intervals
 midpoint_dataframe <- midpoint_dataframe %>%
@@ -258,20 +258,20 @@ two_yearly_results <- midpoint_dataframe %>%
   filter(!is.na(two_year_interval)) %>%  # Exclude rows without a valid interval
   group_by(two_year_interval) %>%
   summarise(
-    total_hcv_infections = sum(hcv_test_rslt, na.rm = TRUE),  # Total cases
+    total_hiv_infections = sum(hiv_test_rslt, na.rm = TRUE),  # Total cases
     total_person_years = sum(time_at_risk, na.rm = TRUE),     # Total person-years
-    incidence_rate = (total_hcv_infections / total_person_years) * 100,  # Incidence rate per 100 person-years
-    lower_bound = (total_hcv_infections / total_person_years) * 100 - 
-                  1.96 * sqrt(total_hcv_infections / (total_person_years^2)) * 100,  # Lower 95% CI
-    upper_bound = (total_hcv_infections / total_person_years) * 100 + 
-                  1.96 * sqrt(total_hcv_infections / (total_person_years^2)) * 100   # Upper 95% CI
+    incidence_rate = (total_hiv_infections / total_person_years) * 100,  # Incidence rate per 100 person-years
+    lower_bound = (total_hiv_infections / total_person_years) * 100 - 
+                  1.96 * sqrt(total_hiv_infections / (total_person_years^2)) * 100,  # Lower 95% CI
+    upper_bound = (total_hiv_infections / total_person_years) * 100 + 
+                  1.96 * sqrt(total_hiv_infections / (total_person_years^2)) * 100   # Upper 95% CI
   )
 
 # Save the two-yearly results to a CSV file
-write.csv(two_yearly_results, "two_yearly_results_first_dataframe_hcv.csv", row.names = FALSE)
+write.csv(two_yearly_results, "two_yearly_results_first_dataframe_hiv.csv", row.names = FALSE)
 
 # Create the plot for the incidence trends
-HCV_incidence_trends_plot <- ggplot(two_yearly_results, aes(x = two_year_interval, y = incidence_rate)) +
+hiv_incidence_trends_plot <- ggplot(two_yearly_results, aes(x = two_year_interval, y = incidence_rate)) +
   geom_line(group = 1, color = "gray", linewidth = 0.8, linetype = "solid") +  # Solid gray line for trends
   geom_point(shape = 18, size = 4, color = "gray") +  # Gray diamonds for points
   geom_errorbar(aes(ymin = lower_bound, ymax = upper_bound), width = 0.1, color = "black", size = 0.8) +  # Black error bars
@@ -292,7 +292,7 @@ HCV_incidence_trends_plot <- ggplot(two_yearly_results, aes(x = two_year_interva
   )
 
 # Save the plot as a PNG file
-ggsave("plots/HCV_incidence_trends_plot_first_dataframe.png", plot = HCV_incidence_trends_plot, width = 10, height = 6, dpi = 300)
+ggsave("plots/hiv_incidence_trends_plot_first_dataframe.png", plot = hiv_incidence_trends_plot, width = 10, height = 6, dpi = 300)
 
 # Print a message indicating the plot and tables have been saved
 cat("Incidence trends plot and tables for the first dataframe have been saved.\n")
@@ -373,17 +373,17 @@ for (i in 1:length(processed_dataframes_long_s3)) {
   # Load the current dataframe
   midpoint_dataframe <- processed_dataframes_long_s3[[i]]
   
-  # Replace midpoint_year with NA if hcv_test_rslt is negative
+  # Replace midpoint_year with NA if hiv_test_rslt is negative
   midpoint_dataframe <- midpoint_dataframe %>%
     mutate(
-      midpoint_year = ifelse(hcv_test_rslt == 0, NA, midpoint_year)  # Replace midpoint_year with NA if hcv_test_rslt == 0
+      midpoint_year = ifelse(hiv_test_rslt == 0, NA, midpoint_year)  # Replace midpoint_year with NA if hiv_test_rslt == 0
     )
   
   # Create a dataframe with rows for years 2013 to 2022 and calculate cases and years_at_risk
   yearly_data <- midpoint_dataframe %>%
     group_by(year) %>%
     summarise(
-      cases = sum(hcv_test_rslt, na.rm = TRUE),        # Sum of hcv_test_rslt for each year
+      cases = sum(hiv_test_rslt, na.rm = TRUE),        # Sum of hiv_test_rslt for each year
       years_at_risk = sum(time_at_risk, na.rm = TRUE)  # Sum of time_at_risk for each year
     ) %>%
     filter(year %in% 2013:2022)  # Ensure only rows for years 2013 to 2022 are included
@@ -406,13 +406,13 @@ for (i in 1:length(processed_dataframes_long_s3)) {
     filter(!is.na(two_year_interval)) %>%  # Exclude rows without a valid interval
     group_by(two_year_interval) %>%
     summarise(
-      total_hcv_infections = sum(hcv_test_rslt, na.rm = TRUE),  # Total cases
+      total_hiv_infections = sum(hiv_test_rslt, na.rm = TRUE),  # Total cases
       total_person_years = sum(time_at_risk, na.rm = TRUE),     # Total person-years
-      incidence_rate = (total_hcv_infections / total_person_years) * 100,  # Incidence rate per 100 person-years
-      lower_bound = (total_hcv_infections / total_person_years) * 100 - 
-                    1.96 * sqrt(total_hcv_infections / (total_person_years^2)) * 100,  # Lower 95% CI
-      upper_bound = (total_hcv_infections / total_person_years) * 100 + 
-                    1.96 * sqrt(total_hcv_infections / (total_person_years^2)) * 100   # Upper 95% CI
+      incidence_rate = (total_hiv_infections / total_person_years) * 100,  # Incidence rate per 100 person-years
+      lower_bound = (total_hiv_infections / total_person_years) * 100 - 
+                    1.96 * sqrt(total_hiv_infections / (total_person_years^2)) * 100,  # Lower 95% CI
+      upper_bound = (total_hiv_infections / total_person_years) * 100 + 
+                    1.96 * sqrt(total_hiv_infections / (total_person_years^2)) * 100   # Upper 95% CI
     )
   
   # Store the results in the list
@@ -437,7 +437,7 @@ incidence_trends <- combined_two_yearly_results %>%
     lower_bound = quantile(incidence_rate, 0.025, na.rm = TRUE),  # 2.5th percentile
     upper_bound = quantile(incidence_rate, 0.975, na.rm = TRUE),  # 97.5th percentile
     median_total_person_years = median(total_person_years, na.rm = TRUE),  # Median total person-years
-    median_total_hcv_infections = median(total_hcv_infections, na.rm = TRUE)  # Median total HCV infections
+    median_total_hiv_infections = median(total_hiv_infections, na.rm = TRUE)  # Median total hiv infections
   )
 
 # View the incidence trends
@@ -448,7 +448,7 @@ View(incidence_trends)
 write.csv(incidence_trends, "incidence_trends_s3.csv", row.names = FALSE)
 
 # Create a plot for the incidence trends
-HCV_incidence_trends_plot <- ggplot(incidence_trends, aes(x = two_year_interval, y = median_incidence_rate)) +
+hiv_incidence_trends_plot <- ggplot(incidence_trends, aes(x = two_year_interval, y = median_incidence_rate)) +
   geom_line(group = 1, color = "gray", linewidth = 0.8, linetype = "solid") +  # Solid gray line for trends
   geom_point(shape = 18, size = 4, color = "gray") +  # Gray diamonds for points
   geom_errorbar(aes(ymin = lower_bound, ymax = upper_bound), width = 0.1, color = "black", size = 0.8) +  # Black error bars
@@ -469,7 +469,7 @@ HCV_incidence_trends_plot <- ggplot(incidence_trends, aes(x = two_year_interval,
   )
 
 # Save the plot as a PNG file
-ggsave("plots/HCV_incidence_trends_plot_s3.png", plot = HCV_incidence_trends_plot, width = 10, height = 6, dpi = 300)
+ggsave("plots/hiv_incidence_trends_plot_s3.png", plot = hiv_incidence_trends_plot, width = 10, height = 6, dpi = 300)
 
 # Create 1000 dataframes of summed yearly person-years and incident cases
 
@@ -491,7 +491,7 @@ for (i in 1:1000) {
   # Sum the specified columns
   summed_df <- df %>%
     summarise(
-      hcv_test_rslt = sum(hcv_test_rslt, na.rm = TRUE),
+      hiv_test_rslt = sum(hiv_test_rslt, na.rm = TRUE),
       days_risk = sum(days_risk, na.rm = TRUE),
       person_years = sum(person_years, na.rm = TRUE),
       X2013 = sum(X2013, na.rm = TRUE),
@@ -504,16 +504,16 @@ for (i in 1:1000) {
       X2020 = sum(X2020, na.rm = TRUE),
       X2021 = sum(X2021, na.rm = TRUE),
       X2022 = sum(X2022, na.rm = TRUE),
-      hcv_test_2013 = sum(hcv_test_2013, na.rm = TRUE),
-      hcv_test_2014 = sum(hcv_test_2014, na.rm = TRUE),
-      hcv_test_2015 = sum(hcv_test_2015, na.rm = TRUE),
-      hcv_test_2016 = sum(hcv_test_2016, na.rm = TRUE),
-      hcv_test_2017 = sum(hcv_test_2017, na.rm = TRUE),
-      hcv_test_2018 = sum(hcv_test_2018, na.rm = TRUE),
-      hcv_test_2019 = sum(hcv_test_2019, na.rm = TRUE),
-      hcv_test_2020 = sum(hcv_test_2020, na.rm = TRUE),
-      hcv_test_2021 = sum(hcv_test_2021, na.rm = TRUE),
-      hcv_test_2022 = sum(hcv_test_2022, na.rm = TRUE)
+      hiv_test_2013 = sum(hiv_test_2013, na.rm = TRUE),
+      hiv_test_2014 = sum(hiv_test_2014, na.rm = TRUE),
+      hiv_test_2015 = sum(hiv_test_2015, na.rm = TRUE),
+      hiv_test_2016 = sum(hiv_test_2016, na.rm = TRUE),
+      hiv_test_2017 = sum(hiv_test_2017, na.rm = TRUE),
+      hiv_test_2018 = sum(hiv_test_2018, na.rm = TRUE),
+      hiv_test_2019 = sum(hiv_test_2019, na.rm = TRUE),
+      hiv_test_2020 = sum(hiv_test_2020, na.rm = TRUE),
+      hiv_test_2021 = sum(hiv_test_2021, na.rm = TRUE),
+      hiv_test_2022 = sum(hiv_test_2022, na.rm = TRUE)
     )
   
   # Store the summed dataframe in the list
@@ -532,15 +532,15 @@ cat("Final combined dataframe:\n")
 print(head(final_summed_df_s3))
 View(final_summed_df_s3)
 
-# Create a new column hcv_test_qa which sums up all the hcv_test_20xx columns
+# Create a new column hiv_test_qa which sums up all the hiv_test_20xx columns
 final_summed_df_s3 <- final_summed_df_s3 %>%
-  mutate(hcv_test_qa = rowSums(across(starts_with("hcv_test_20")), na.rm = TRUE))
+  mutate(hiv_test_qa = rowSums(across(starts_with("hiv_test_20")), na.rm = TRUE))
 
 # Add columns for overall incidence rate and 95% confidence interval
 final_summed_df_s3 <- final_summed_df_s3 %>%
   mutate(
-    overall_incidence_rate = (hcv_test_rslt / person_years) * 100,  # Incidence rate per 100 person-years
-    standard_error = sqrt(hcv_test_rslt) / person_years * 100,      # Standard error of the incidence rate
+    overall_incidence_rate = (hiv_test_rslt / person_years) * 100,  # Incidence rate per 100 person-years
+    standard_error = sqrt(hiv_test_rslt) / person_years * 100,      # Standard error of the incidence rate
     lower_bound_95CI = overall_incidence_rate - (1.96 * standard_error),  # Lower bound of 95% CI
     upper_bound_95CI = overall_incidence_rate + (1.96 * standard_error)   # Upper bound of 95% CI
   )
@@ -584,15 +584,15 @@ yearly_upper_bounds <- sapply(2013:2022, function(year) {
 cat("Yearly upper bounds:\n")
 print(yearly_upper_bounds)
 
-median_hcv_infections <- sapply(2013:2022, function(year) {
-  if (paste0("hcv_test_", year) %in% colnames(final_summed_df_s3)) {
-    median(final_summed_df_s3[[paste0("hcv_test_", year)]], na.rm = TRUE)
+median_hiv_infections <- sapply(2013:2022, function(year) {
+  if (paste0("hiv_test_", year) %in% colnames(final_summed_df_s3)) {
+    median(final_summed_df_s3[[paste0("hiv_test_", year)]], na.rm = TRUE)
   } else {
     NA
   }
 })
-cat("Median HCV infections:\n")
-print(median_hcv_infections)
+cat("Median hiv infections:\n")
+print(median_hiv_infections)
 
 median_person_years <- sapply(2013:2022, function(year) {
   if (paste0("X", year) %in% colnames(final_summed_df_s3)) {
@@ -604,8 +604,8 @@ median_person_years <- sapply(2013:2022, function(year) {
 cat("Median person-years:\n")
 print(median_person_years)
 
-# Calculate the overall median number of HCV infections and person-years
-overall_median_hcv_infections <- median(rowSums(final_summed_df_s3[paste0("hcv_test_", 2013:2022)], na.rm = TRUE), na.rm = TRUE)
+# Calculate the overall median number of hiv infections and person-years
+overall_median_hiv_infections <- median(rowSums(final_summed_df_s3[paste0("hiv_test_", 2013:2022)], na.rm = TRUE), na.rm = TRUE)
 overall_median_person_years <- median(rowSums(final_summed_df_s3[paste0("X", 2013:2022)], na.rm = TRUE), na.rm = TRUE)
 
 # Create a new dataframe with the overall and yearly incidence rates and lower bounds
@@ -614,7 +614,7 @@ results_df_s3 <- data.frame(
   Incidence_rate = c(median_incidence_rate, yearly_medians),
   Lower_bound = c(lower_bound_overall, yearly_lower_bounds),
   Upper_bound = c(upper_bound_overall, yearly_upper_bounds),
-  Median_HCV_infections = c(overall_median_hcv_infections, median_hcv_infections),
+  Median_hiv_infections = c(overall_median_hiv_infections, median_hiv_infections),
   Median_person_years = c(overall_median_person_years, median_person_years)
 )
 
