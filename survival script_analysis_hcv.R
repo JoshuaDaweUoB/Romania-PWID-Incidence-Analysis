@@ -4,7 +4,7 @@ pacman::p_load(tidyr, withr, lubridate, MASS, writexl, readxl, arsenal, survival
 ## set wd
 setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/Romania PWID/data")
 
-## baseline prevalence and predictors of HCV infection
+## baseline prevalence and predictors of hcv infection
  
 # load data
 baseline_analysis_hcv <- read.csv("romania_pwid_hcv_bl.csv")
@@ -291,204 +291,109 @@ hcv_summary_table <- hcv_summary_table %>%
 # save
 write.csv(hcv_summary_table, "hcv_summary_table.csv", row.names = FALSE)
 
-# ## differences between excluded and included in longitudinal analysis
+## differences between excluded and included in longitudinal analysis
+
+# variable for table
+table_vars <- c(
+  "gender",
+  "age_4cat",
+  "ethnic_roma_ever",
+  "sex_work_ever_4cat",
+  "homeless_ever",
+  "oat_ever",
+  "drug_type_main"
+)
 
 # load data
+overall_data <- readRDS("overall_data.rds")
 baseline_analysis_hcv <- read.csv("romania_pwid_hcv_bl.csv")
-romania_pwid_hcv_test <- read.csv("romania_pwid_hcv_test.csv", stringsAsFactors = FALSE)
+baseline_analysis_hcv_neg <- read.csv("romania_pwid_hcv_bl_neg.csv")
+romania_pwid_hcv_included <- read.csv("romania_pwid_hcv_included.csv")
 
-# create included columns
-romania_pwid_hcv_test$included2 <- "Yes"
-baseline_analysis_hcv$included <- "No"
+# distinct rows of oat
+n_distinct(romania_pwid_hcv_bl$id[romania_pwid_hcv_bl$oat_ever == 1]) ## 1065 rows (dropped one)
 
-# create included dataframe
-romania_pwid_hcv_test_included <- romania_pwid_hcv_test[, c("id", "included2")]
-romania_pwid_hcv_test_included <- romania_pwid_hcv_test_included[!duplicated(romania_pwid_hcv_test_included$id), ]
-baseline_analysis_hcv <- baseline_analysis_hcv %>%
-  left_join(romania_pwid_hcv_test_included, by = "id")
-
-# replace No includes with Yes and delete included2
-baseline_analysis_hcv$included[baseline_analysis_hcv$included2 == "Yes"] <- "Yes"
-baseline_analysis_hcv$included2 <- NULL
-
-# sequence by id 
-baseline_analysis_hcv <- baseline_analysis_hcv %>%
-  arrange(id, appointment_dte) %>%
-  group_by(id) %>%
-  mutate(id_seq = row_number()) %>%
-  ungroup()
-
-# highest value in the id_seq column
-highest_id_seq <- baseline_analysis_hcv %>%
-  summarise(max_id_seq = max(id_seq, na.rm = TRUE))
-cat("Highest value in id_seq:\n")
-print(highest_id_seq)
-
-# keep rows where appointment_seq equals 1
-baseline_analysis_hcv <- baseline_analysis_hcv %>%
-  filter(appointment_seq == 1)
-
-# change test results to 0 and 1
-baseline_analysis_hcv <- baseline_analysis_hcv %>%
-  mutate(hcv_test_rslt = case_when(
-    hcv_test_rslt == 1 ~ 0,
-    hcv_test_rslt == 2 ~ 1,
-    TRUE ~ hcv_test_rslt
-  ))
-
-# drop individuals who are positive at baseline
-baseline_analysis_hcv <- baseline_analysis_hcv %>%
-  filter(hcv_test_rslt == 0)
-
-# recode variables
-baseline_analysis_hcv <- baseline_analysis_hcv %>%
-  mutate(
-    sex_work_12m = ifelse(is.na(sex_work_current), 0, sex_work_current),
-    msm_12m = ifelse(is.na(msm_current), 0, msm_current),
-    homeless_12m = ifelse(is.na(homeless_current), 0, homeless_current),
-    ethnic_roma_ever = ifelse(is.na(ethnic_roma), 0, ethnic_roma),
-    gender = ifelse(gender == 2, 0, gender) 
-  )
-
-# tables of included vs. excluded
-included_summary_table <- baseline_analysis_hcv %>%
-  dplyr::select(
-    sex_work_12m, sex_work_ever,
-    homeless_12m, homeless_ever,
-    ethnic_roma_ever,
-    oat_12m, oat_ever,
-    gender, age_4cat, included
-  ) %>%
-  mutate(across(
-    c(
-      sex_work_12m, sex_work_ever,
-      homeless_12m, homeless_ever,
-      ethnic_roma_ever,
-      oat_12m, oat_ever,
-      gender, age_4cat
-    ),
-    as.character
-  )) %>%
+# overall column (all PWID)
+overall_column <- overall_data %>%
   pivot_longer(
-    cols = c(
-      sex_work_12m, sex_work_ever,
-      homeless_12m, homeless_ever,
-      ethnic_roma_ever,
-      oat_12m, oat_ever,
-      gender, age_4cat
-    ),
+    cols = all_of(table_vars),
     names_to = "Variable",
     values_to = "Level"
   ) %>%
-  group_by(Variable, Level, included) %>%
-  summarise(
-    Count = n(),
-    .groups = "drop"
+  mutate(
+    Variable = factor(Variable, levels = table_vars)
   ) %>%
-  pivot_wider(
-    names_from = included,
-    values_from = Count,
-    values_fill = 0
-  ) %>%
-  rename(
-    Included_Yes = Yes,
-    Included_No = No
+  group_by(Variable, Level) %>%
+  summarise(Attended_service = n(), .groups = "drop") 
+
+# second column (recorded hcv test)
+second_column <- baseline_analysis_hcv %>%
+  mutate(across(all_of(table_vars), as.character)) %>%
+  pivot_longer(
+    cols = all_of(table_vars),
+    names_to = "Variable",
+    values_to = "Level"
   ) %>%
   mutate(
-    Total = Included_Yes + Included_No,
-    Proportion_Included = (Included_Yes / Total) * 100
+    Variable = factor(Variable, levels = table_vars)
   ) %>%
-  group_by(Variable) %>%
+  group_by(Variable, Level) %>%
+  summarise(Count_second_col = n(), .groups = "drop")
+
+# merge into table
+hcv_included_table <- overall_column %>%
+  left_join(second_column, by = c("Variable", "Level")) %>%
   mutate(
-    ref_level = case_when(
-      Variable == "age_4cat" ~ "<30",
-      Variable == "gender" ~ "Female",
-      TRUE ~ "0"
-    ),
-    ref_yes = Included_Yes[Level == ref_level][1],
-    ref_no = Included_No[Level == ref_level][1],
-    OR = ifelse(Level == ref_level, 1, (Included_Yes / Included_No) / (ref_yes / ref_no)),
-    logOR = ifelse(Level == ref_level, NA, log(OR)),
-    SE_logOR = ifelse(Level == ref_level, NA, sqrt(1/Included_Yes + 1/Included_No + 1/ref_yes + 1/ref_no)),
-    CI_lower = ifelse(Level == ref_level, NA, exp(logOR - 1.96 * SE_logOR)),
-    CI_upper = ifelse(Level == ref_level, NA, exp(logOR + 1.96 * SE_logOR))
-  ) %>%
-  ungroup() %>%
-  select(-ref_level, -ref_yes, -ref_no, -logOR, -SE_logOR) %>%
-  mutate(
-    num_perc = sprintf("%d (%.1f)", Included_Yes, Proportion_Included),
-    or_formatted = ifelse(
-      is.na(OR),
-      "",
-      sprintf("%.2f (%.2f-%.2f)", OR, CI_lower, CI_upper)
-    )
+    prop_col2 = Count_second_col / Attended_service,
+    Recorded_test = sprintf("%d (%.1f%%)", Count_second_col, prop_col2 * 100)
   )
 
-write.csv(included_summary_table, "hcv_included_summary_table.csv", row.names = FALSE)
+# third column (hcv negative at baseline)
+third_column <- baseline_analysis_hcv_neg %>%
+  mutate(across(all_of(table_vars), as.character)) %>%
+  pivot_longer(
+    cols = all_of(table_vars),
+    names_to = "Variable",
+    values_to = "Level"
+  ) %>%
+  mutate(
+    Variable = factor(Variable, levels = table_vars)
+  ) %>%
+  group_by(Variable, Level) %>%
+  summarise(Count_third_col = n(), .groups = "drop")
 
-# tables stratified by gender
-gender_levels <- unique(baseline_analysis_hcv$gender)
+# merge into table
+hcv_included_table <- hcv_included_table %>%
+  left_join(third_column, by = c("Variable", "Level")) %>%
+  mutate(prop_col3 = Count_third_col/Count_second_col,
+  Negative_test = sprintf("%d (%.1f%%)", Count_third_col, prop_col3 * 100))
 
-included_summary_tables_by_gender <- lapply(gender_levels, function(g) {
-  tab <- baseline_analysis_hcv %>%
-    filter(gender == g) %>%
-    dplyr::select(all_of(vars_to_summarize), included) %>%
-    mutate(across(all_of(vars_to_summarize), as.character)) %>%
-    pivot_longer(
-      cols = all_of(vars_to_summarize),
-      names_to = "Variable",
-      values_to = "Level"
-    ) %>%
-    group_by(Variable, Level, included) %>%
-    summarise(
-      Count = n(),
-      .groups = "drop"
-    ) %>%
-    pivot_wider(
-      names_from = included,
-      values_from = Count,
-      values_fill = 0
-    ) %>%
-    rename(
-      Included_Yes = Yes,
-      Included_No = No
-    ) %>%
-    mutate(
-      Total = Included_Yes + Included_No,
-      Proportion_Included = (Included_Yes / Total) * 100
-    ) %>%
-    group_by(Variable) %>%
-    mutate(
-      ref_level = case_when(
-        Variable == "age_4cat" ~ "<30",
-        TRUE ~ "0"
-      ),
-      ref_yes = Included_Yes[Level == ref_level][1],
-      ref_no = Included_No[Level == ref_level][1],
-      OR = ifelse(Level == ref_level, 1, (Included_Yes / Included_No) / (ref_yes / ref_no)),
-      logOR = ifelse(Level == ref_level, NA, log(OR)),
-      SE_logOR = ifelse(Level == ref_level, NA, sqrt(1/Included_Yes + 1/Included_No + 1/ref_yes + 1/ref_no)),
-      CI_lower = ifelse(Level == ref_level, NA, exp(logOR - 1.96 * SE_logOR)),
-      CI_upper = ifelse(Level == ref_level, NA, exp(logOR + 1.96 * SE_logOR)),
-      num_perc = sprintf("%d (%.1f)", Included_Yes, Proportion_Included),
-      or_formatted = ifelse(
-        is.na(OR), "",
-        sprintf("%.2f (%.2f-%.2f)", OR, CI_lower, CI_upper)
-      ),
-      Gender = g
-    ) %>%
-    ungroup() %>%
-    select(-ref_level, -ref_yes, -ref_no, -logOR, -SE_logOR)
-  tab
-})
+# fourth column (subsequent hcv test)
+fourth_column <- romania_pwid_hcv_included %>%
+  mutate(across(all_of(table_vars), as.character)) %>%
+  pivot_longer(
+    cols = all_of(table_vars),
+    names_to = "Variable",
+    values_to = "Level"
+  ) %>%
+  mutate(
+    Variable = factor(Variable, levels = table_vars)
+  ) %>%
+  group_by(Variable, Level) %>%
+  summarise(Count_fourth_col = n(), .groups = "drop")
 
-for (i in seq_along(gender_levels)) {
-  write.csv(
-    included_summary_tables_by_gender[[i]],
-    paste0("hcv_included_summary_table_gender_", gender_levels[i], ".csv"),
-    row.names = FALSE
-  )
-}
+# merge into table
+hcv_included_table <- hcv_included_table %>%
+  left_join(fourth_column, by = c("Variable", "Level")) %>%
+  mutate(prop_col4 = Count_fourth_col/Count_third_col,
+  Subsequent_test = sprintf("%d (%.1f%%)", Count_fourth_col, prop_col4 * 100))
+
+# keep columns of interest
+hcv_included_table <- hcv_included_table %>%
+  select(Variable, Level, Attended_service, Recorded_test, Negative_test, Subsequent_test)
+
+# save included vs. excluded table
+write.csv(hcv_included_table, "hcv_included_table.csv", row.names = FALSE)
 
 ## cox risk factor analysis
 

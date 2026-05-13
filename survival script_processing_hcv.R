@@ -25,6 +25,10 @@ romania_pwid_treatment <- romania_pwid_treatment %>%
   dplyr::select(appointment_dte, id) %>%
   mutate(oat = 1)
 
+# tab out number of oat rows
+table(romania_pwid_treatment$oat, useNA="ifany") ## 1376 rows
+n_distinct(romania_pwid_treatment$id) ## 1066 distinct
+
 # first recorded oat 
 romania_pwid_treatment <- romania_pwid_treatment %>%
   mutate(appointment_dte = as.Date(appointment_dte)) %>%
@@ -71,35 +75,6 @@ romania_pwid_hcv <- romania_pwid_hcv %>%
       right = FALSE
     )
   )
-# age two categories
-  romania_pwid_hcv <- romania_pwid_hcv %>%
-  mutate(age_2cat = case_when(
-    age < 40 ~ "<40",
-    age >= 40 ~ "40+"
-  ))
-
-# syringe type
-romania_pwid_hcv <- romania_pwid_hcv %>%
-  mutate(
-    syringe_1ml_ever_bin = case_when(
-      syringes_distributed_1ml > 0 ~ 1,
-      is.na(syringes_distributed_1ml) ~ 0
-    ),
-    syringe_2ml_ever_bin = case_when(
-      syringes_distributed_2ml > 0 ~ 1,
-      is.na(syringes_distributed_2ml) ~ 0
-    )
-  )
-
-# make syringe type time varying
-romania_pwid_hcv <- romania_pwid_hcv %>%
-  arrange(id, appointment_dte) %>%
-  group_by(id) %>%
-  mutate(
-    syringe_1ml_ever = cummax(if_else(syringe_1ml_ever_bin == 1, 1, 0)),
-    syringe_2ml_ever = cummax(if_else(syringe_2ml_ever_bin == 1, 1, 0))
-  ) %>%
-  ungroup()
 
 # one year prior to test
 romania_pwid_hcv <- romania_pwid_hcv %>%
@@ -107,31 +82,6 @@ romania_pwid_hcv <- romania_pwid_hcv %>%
     hcv_test_dte = if_else(!is.na(hcv_test_rslt), as.Date(appointment_dte), as.Date(NA)),
     hcv_test_dte_12m_prev = hcv_test_dte - years(1)
   )
-
-# sum number of syringes in past year by id
-romania_pwid_hcv <- romania_pwid_hcv %>%
-  group_by(id) %>%
-  mutate(
-    syringes_1ml_12m_prior = sum(
-      syringes_distributed_1ml[appointment_dte >= hcv_test_dte_12m_prev &
-                               appointment_dte <= hcv_test_dte],
-      na.rm = TRUE
-    ),
-    syringes_2ml_12m_prior = sum(
-      syringes_distributed_2ml[appointment_dte >= hcv_test_dte_12m_prev &
-                               appointment_dte <= hcv_test_dte],
-      na.rm = TRUE
-    )
-  ) %>%
-  ungroup()
-
-romania_pwid_hcv <- romania_pwid_hcv %>%
-  mutate(syringes_1ml_12m_prior_5cat = case_when(
-        syringes_1ml_12m_prior < 21 ~ "0-20",
-        syringes_1ml_12m_prior > 20 & syringes_1ml_12m_prior < 101 ~ "21-100",
-        syringes_1ml_12m_prior > 100 & syringes_1ml_12m_prior < 251 ~ "101-250",
-        syringes_1ml_12m_prior > 250 ~ "251+",
-        ))
 
 # main drug injected
 table(trimws(as.character(romania_pwid_hcv$drug_type)), useNA = "ifany")
@@ -151,51 +101,6 @@ romania_pwid_hcv <- romania_pwid_hcv %>%
   )
 
 table(romania_pwid_hcv$drug_type_main, romania_pwid_hcv$drug_type, useNA = "ifany")
-
-# make drug indicators for past 12 months before test 
-romania_pwid_hcv <- romania_pwid_hcv %>%
-  group_by(id) %>%
-  mutate(
-    heroin_12m = as.integer(any(drug_type_main == "Heroin" &
-                                !is.na(hcv_test_dte) &
-                                appointment_dte >= hcv_test_dte_12m_prev &
-                                appointment_dte <= hcv_test_dte,
-                                na.rm = TRUE)),
-    legal_12m = as.integer(any(drug_type_main == "Legal" &
-                               !is.na(hcv_test_dte) &
-                               appointment_dte >= hcv_test_dte_12m_prev &
-                               appointment_dte <= hcv_test_dte,
-                               na.rm = TRUE)),
-    methadone_12m = as.integer(any(drug_type_main == "Methadone" &
-                                   !is.na(hcv_test_dte) &
-                                   appointment_dte >= hcv_test_dte_12m_prev &
-                                   appointment_dte <= hcv_test_dte,
-                                   na.rm = TRUE)),
-    otherdrugs_12m = as.integer(any(drug_type_main == "Other drugs" &
-                                    !is.na(hcv_test_dte) &
-                                    appointment_dte >= hcv_test_dte_12m_prev &
-                                    appointment_dte <= hcv_test_dte,
-                                    na.rm = TRUE)),
-    undeclared_12m = as.integer(any(drug_type_main == "Undeclared" &
-                                    !is.na(hcv_test_dte) &
-                                    appointment_dte >= hcv_test_dte_12m_prev &
-                                    appointment_dte <= hcv_test_dte,
-                                    na.rm = TRUE)),
-    polyconsumer_12m = as.integer(any(drug_type_main == "Polyconsumer" &
-                                    !is.na(hcv_test_dte) &
-                                    appointment_dte >= hcv_test_dte_12m_prev &
-                                    appointment_dte <= hcv_test_dte,
-                                    na.rm = TRUE))                                    
-  ) %>%
-  ungroup()
-
-table(romania_pwid_hcv$heroin_12m, useNA = "ifany")
-table(romania_pwid_hcv$methadone_12m, useNA = "ifany")
-table(romania_pwid_hcv$otherdrugs_12m, useNA = "ifany")
-table(romania_pwid_hcv$undeclared_12m, useNA = "ifany")
-table(romania_pwid_hcv$legal_12m, useNA = "ifany")
-table(romania_pwid_hcv$polyconsumer_12m, useNA = "ifany")
-table(romania_pwid_hcv$syringes_1ml_12m_prior_5cat, useNA = "ifany")
 
 # sequence negative hcv tests
 
@@ -252,7 +157,7 @@ hcv_neg_test_seq <- romania_pwid_hcv %>%
 romania_pwid_hcv <- romania_pwid_hcv %>%
   left_join(hcv_neg_test_seq, by = "row_id")
 
-# create last_hcv_neg_test_dte
+# create last_hcv_test_dte
 romania_pwid_hcv <- romania_pwid_hcv %>%
   group_by(id) %>%
   mutate(
@@ -262,14 +167,7 @@ romania_pwid_hcv <- romania_pwid_hcv %>%
   ) %>%
   ungroup()
 
-# delete rows that occured after last negative hcv test
-romania_pwid_hcv <- romania_pwid_hcv %>%
-  filter(is.na(last_hcv_test_dte) | appointment_dte <= last_hcv_test_dte)
-
 # lifetime exposure variables
-
-
-
 
 # recode roma ethnicity
 romania_pwid_hcv <- romania_pwid_hcv %>%
@@ -285,6 +183,40 @@ romania_pwid_hcv <- romania_pwid_hcv %>%
   ungroup() %>%
   mutate(hcv_ever = factor(hcv_ever, levels = c(0, 1)))
 
+# recode oat
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  group_by(id) %>%
+  mutate(oat_ever = ifelse(any(oat == 1, na.rm = TRUE), 1, 0)) %>%
+  ungroup() %>%
+  mutate(oat_ever = factor(oat_ever, levels = c(0, 1)))
+
+# recode sex work
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  group_by(id) %>%
+  mutate(sex_work_ever = ifelse(any(sex_work_current), 1, 0)) %>%
+  ungroup() %>%
+  mutate(sex_work_ever = factor(sex_work_ever, levels = c(0, 1)))
+
+# recode homelessness
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  group_by(id) %>%
+  mutate(homeless_ever = ifelse(any(homeless_current), 1, 0)) %>%
+  ungroup() %>%
+  mutate(homeless_ever = factor(homeless_ever, levels = c(0, 1)))
+
+# make vars factors
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  mutate(
+    oat_current = factor(oat_ever, levels = c(0, 1)),
+    sex_work_current = factor(sex_work_current, levels = c(0, 1)),
+    homeless_current = factor(homeless_current, levels = c(0, 1))
+  )
+
+# tab out changing lifetime vars
+current_vars <- c("oat", "oat_ever", "sex_work_current", "sex_work_ever", "homeless_current", "homeless_ever")
+table_current <- CreateTableOne(vars = current_vars, data = romania_pwid_hcv)
+print(table_current, showAllLevels = TRUE)
+
 # tab out unchanging lifetime vars
 vars <- c("ethnic_roma_ever", "hcv_ever")
 table_roma_hcv <- CreateTableOne(vars = vars, data = romania_pwid_hcv)
@@ -295,9 +227,54 @@ romania_pwid_hcv <- romania_pwid_hcv %>%
   mutate(
     oat_dte = dplyr::if_else(oat == 1, appointment_dte, as.Date(NA)),
     sex_work_current_dte = dplyr::if_else(sex_work_current == 1, appointment_dte, as.Date(NA)),
-    msm_current_dte = dplyr::if_else(msm_current == 1, appointment_dte, as.Date(NA)),
     homeless_current_dte = dplyr::if_else(homeless_current == 1, appointment_dte, as.Date(NA))
   )
+
+# recode other values of _ever to 1 for ids with any current exposure
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  group_by(id) %>%
+  mutate(
+    oat_ever = as.integer(any(oat == 1, na.rm = TRUE)),
+    sex_work_ever = as.integer(any(sex_work_current == 1, na.rm = TRUE)),
+    homeless_ever = as.integer(any(homeless_current == 1, na.rm = TRUE))
+  ) %>%
+  ungroup()
+
+# force onto all rows
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  group_by(id) %>%
+  mutate(
+    oat_ever = max(oat_ever, na.rm = TRUE),
+    homeless_ever = max(homeless_ever, na.rm = TRUE),
+    sex_work_ever = max(sex_work_ever_4cat, na.rm = TRUE)
+  ) %>%
+  ungroup()
+
+# QA check
+romania_pwid_hcv %>%
+  group_by(id) %>%
+  summarise(
+    oat_check = n_distinct(oat_ever),
+    homeless_check = n_distinct(homeless_ever),
+    hcv_check = n_distinct(hcv_ever)
+  ) %>%
+  summarise(across(everything(), max))
+
+# make vars factors for table
+romania_pwid_hcv <- romania_pwid_hcv %>%
+  mutate(
+    oat_ever = factor(oat_ever, levels = c(0, 1)),
+    sex_work_ever = factor(sex_work_ever, levels = c(0, 1)),
+    homeless_ever = factor(homeless_ever, levels = c(0, 1)),
+    ethnic_roma_ever = factor(ethnic_roma_ever, levels = c(0, 1)),    
+  )
+
+current_vars <- c("oat", "oat_ever", "sex_work_current", "sex_work_ever", "homeless_current", "homeless_ever")
+table_current <- CreateTableOne(vars = current_vars, data = romania_pwid_hcv)
+print(table_current, showAllLevels = TRUE)
+
+# distinct rows of oat
+n_distinct(romania_pwid_hcv$id[romania_pwid_hcv$oat_ever == 1]) ## 1066 rows (correct)
 
 # find first exposure date
 romania_pwid_hcv <- romania_pwid_hcv %>%
@@ -305,31 +282,18 @@ romania_pwid_hcv <- romania_pwid_hcv %>%
   mutate(
     oat_first_exposure_dte = min(oat_dte, na.rm = TRUE),
     sex_work_current_first_exposure_dte = min(sex_work_current_dte, na.rm = TRUE),
-    homeless_current_first_exposure_dte = min(homeless_current_dte, na.rm = TRUE),
-    msm_current_first_exposure_dte = min(msm_current_dte, na.rm = TRUE)
+    homeless_current_first_exposure_dte = min(homeless_current_dte, na.rm = TRUE)
   ) %>%
   ungroup()
 
-# recode other values of _ever to 1 for ids with any current exposure
-romania_pwid_hcv <- romania_pwid_hcv %>%
-  group_by(id) %>%
-  mutate(
-    oat_ever = ifelse(any(oat == 1, na.rm = TRUE), 1, oat),
-    sex_work_ever = ifelse(any(sex_work_current == 1, na.rm = TRUE), 1, sex_work_current),
-    msm_ever = ifelse(any(msm_current == 1, na.rm = TRUE), 1, msm_current),
-    homeless_ever = ifelse(any(homeless_current == 1, na.rm = TRUE), 1, homeless_current)
-  ) %>%
-  ungroup()
-
-# set _ever variables to 0 before first exposure date
+# set _ever variables to 0 if not exposed
+ever_vars <- c("oat_ever", "sex_work_ever", "homeless_ever", "hcv_ever", "ethnic_roma_ever")
 romania_pwid_hcv <- romania_pwid_hcv %>%
   mutate(
-    oat_ever = ifelse(!is.na(oat_first_exposure_dte) & appointment_dte < oat_first_exposure_dte, 0, as.numeric(as.character(oat_ever))),
-    sex_work_ever = ifelse(!is.na(sex_work_current_first_exposure_dte) & appointment_dte < sex_work_current_first_exposure_dte, 0, as.numeric(as.character(sex_work_ever))),
-    msm_ever = ifelse(!is.na(msm_current_first_exposure_dte) & appointment_dte < msm_current_first_exposure_dte, 0, as.numeric(as.character(msm_ever))),
-    homeless_ever = ifelse(!is.na(homeless_current_first_exposure_dte) & appointment_dte < homeless_current_first_exposure_dte, 0, as.numeric(as.character(homeless_ever)))
-  ) %>%
-  mutate(across(ends_with("_ever"), ~factor(., levels = c(0, 1))))
+    across(all_of(ever_vars),
+      ~ factor(ifelse(. == 1, 1, 0),
+        levels = c(0, 1)
+        )))
 
 # select and order vars
 romania_pwid_hcv <- romania_pwid_hcv %>%
@@ -337,16 +301,17 @@ romania_pwid_hcv <- romania_pwid_hcv %>%
     id,
     oat, oat_ever,
     sex_work_current, sex_work_ever,
-    msm_current, msm_ever,
     homeless_current, homeless_ever,
     ethnic_roma, ethnic_roma_ever,
-    hcv_test_rslt, hcv_ever,
     everything()
   )
 
-ever_vars <- c("oat_ever", "sex_work_ever", "msm_ever", "homeless_ever", "hcv_ever", "ethnic_roma_ever")
+ever_vars <- c("oat", "oat_ever", "sex_work_current", "sex_work_ever", "homeless_current", "homeless_ever", "ethnic_roma", "ethnic_roma_ever")
 table_ever <- CreateTableOne(vars = ever_vars, data = romania_pwid_hcv)
 print(table_ever, showAllLevels = TRUE)
+
+# distinct rows of oat
+n_distinct(romania_pwid_hcv$id[romania_pwid_hcv$oat_ever == 1]) ## 1066 rows (correct)
 
 # find first negative hcv test date for each id
 first_neg_dates <- romania_pwid_hcv %>%
@@ -354,121 +319,83 @@ first_neg_dates <- romania_pwid_hcv %>%
   group_by(id) %>%
   summarise(first_hcv_neg_test_dte = min(appointment_dte, na.rm = TRUE), .groups = "drop")
 
-# join back to all rows
-romania_pwid_hcv <- romania_pwid_hcv %>%
-  left_join(first_neg_dates, by = "id") %>%
-  mutate(
-    before_first_neg = if_else(
-      !is.na(first_hcv_neg_test_dte) & appointment_dte < first_hcv_neg_test_dte,
-      1L, 0L
-    )
-  )
-
-# 12 months vars
+# relevel sex work variable
 romania_pwid_hcv <- romania_pwid_hcv %>%
   mutate(
-    appointment_dte = as.Date(appointment_dte),
-    homeless_current = ifelse(is.na(homeless_current), 0, as.numeric(homeless_current)),
-    sex_work_current = ifelse(is.na(sex_work_current), 0, as.numeric(sex_work_current)),
-    msm_current = ifelse(is.na(msm_current), 0, as.numeric(msm_current)),
-    oat = ifelse(is.na(oat), 0, as.numeric(oat))
-  ) %>%
-  group_by(id) %>%
-  arrange(appointment_dte) %>%
-  mutate(
-    homeless_12m = ifelse(
-      !is.na(hcv_test_rslt),
-      sapply(appointment_dte, function(test_date) {
-        any(
-          appointment_dte >= (test_date - days(365)) &
-          appointment_dte <= test_date &
-          homeless_current == 1
-        )
-      }) %>% as.integer(),
-      0L
+    sex_work_ever_4cat = factor(
+      case_when(
+      sex_work_ever == 0 & gender == "Female" ~ 0,
+      sex_work_ever == 1 & gender == "Female" ~ 1, 
+      sex_work_ever == 0 & gender == "Male" ~ 2,
+      sex_work_ever == 1 & gender == "Male" ~ 3
     ),
-    sex_work_12m = ifelse(
-      !is.na(hcv_test_rslt),
-      sapply(appointment_dte, function(test_date) {
-        any(
-          appointment_dte >= (test_date - days(365)) &
-          appointment_dte <= test_date &
-          sex_work_current == 1
-        )
-      }) %>% as.integer(),
-      0L
-    ),
-    msm_12m = ifelse(
-      !is.na(hcv_test_rslt),
-      sapply(appointment_dte, function(test_date) {
-        any(
-          appointment_dte >= (test_date - days(365)) &
-          appointment_dte <= test_date &
-          msm_current == 1
-        )
-      }) %>% as.integer(),
-      0L
-    ),
-    oat_12m = ifelse(
-      !is.na(hcv_test_rslt),
-      sapply(appointment_dte, function(test_date) {
-        any(
-          appointment_dte >= (test_date - days(365)) &
-          appointment_dte <= test_date &
-          oat == 1
-        )
-      }) %>% as.integer(),
-      0L
-    )
-  ) %>%
-  ungroup()
+    levels = c(0, 1, 2, 3), 
+    labels = c("No sex work - female", "Sex work - female", "No sex work - male", "Sex work - male")
+  ))
 
-# tidy up exposures
-romania_pwid_hcv <- romania_pwid_hcv %>%
-  mutate(homeless_12m = if_else(homeless_current == 1, 1L, homeless_12m))
-romania_pwid_hcv <- romania_pwid_hcv %>%
-  mutate(sex_work_12m = if_else(sex_work_current == 1, 1L, sex_work_12m))
-romania_pwid_hcv <- romania_pwid_hcv %>%
-  mutate(msm_12m = if_else(msm_current == 1, 1L, msm_12m))
-romania_pwid_hcv <- romania_pwid_hcv %>%
-  mutate(oat_12m = if_else(oat == 1, 1L, oat_12m))
-
-romania_pwid_hcv$homeless_12m <- as.factor(romania_pwid_hcv$homeless_12m)
-romania_pwid_hcv$homeless_current <- as.factor(romania_pwid_hcv$homeless_current)
-romania_pwid_hcv$sex_work_12m <- as.factor(romania_pwid_hcv$sex_work_12m)
-romania_pwid_hcv$sex_work_current <- as.factor(romania_pwid_hcv$sex_work_current)
-romania_pwid_hcv$msm_12m <- as.factor(romania_pwid_hcv$msm_12m)
-romania_pwid_hcv$msm_current <- as.factor(romania_pwid_hcv$msm_current)
-romania_pwid_hcv$oat_12m <- as.factor(romania_pwid_hcv$oat_12m)
+# save overall cohort
 
 # table of exposures
-current_vars <- c("oat_12m", "oat_ever", "homeless_12m", "homeless_current", "homeless_ever", "sex_work_12m", "sex_work_current", "sex_work_ever", "msm_12m", "msm_current", "msm_ever", "hcv_ever", "ethnic_roma_ever")
+current_vars <- c("oat_ever", "homeless_ever", "sex_work_ever", "hcv_ever", "ethnic_roma_ever")
 current_table <- CreateTableOne(
   vars = current_vars,
   data = romania_pwid_hcv
 )
 print(current_table, showAllLevels = TRUE)
 
-# list of exposure pairs
-exposure_pairs <- list(
-  c("oat_12m", "oat_ever"),
-  c("sex_work_12m", "sex_work_ever"),
-  c("msm_12m", "msm_ever"),
-  c("homeless_12m", "homeless_ever")
-)
+# id sequence
+overall_data <- romania_pwid_hcv %>%
+  group_by(id) %>%
+  arrange(id, appointment_dte) %>%
+  mutate(id_seq = row_number()) %>%
+  ungroup()
 
-# make sure no recently exposed are never exposed
-for (pair in exposure_pairs) {
-  count <- romania_pwid_hcv %>%
-    filter(.data[[pair[1]]] == 1 & is.na(.data[[pair[2]]])) %>%
-    summarise(n_ids = n_distinct(id))
-  cat(pair[1], "== 1 &", pair[2], "is NA: n_ids =", count$n_ids, "\n")
-}
+# table of exposures
+current_vars <- c("oat_ever", "homeless_ever", "sex_work_ever", "hcv_ever", "ethnic_roma_ever")
+current_table <- CreateTableOne(
+  vars = current_vars,
+  data = overall_data
+)
+print(current_table, showAllLevels = TRUE)
+
+# restrict to one row per id
+overall_data <- overall_data %>%
+  filter(id_seq == 1)
+
+# table of exposures
+current_vars <- c("oat_ever", "homeless_ever", "sex_work_ever", "hcv_ever", "ethnic_roma_ever")
+current_table <- CreateTableOne(
+  vars = current_vars,
+  data = overall_data
+)
+print(current_table, showAllLevels = TRUE)
+
+# distinct rows of oat
+n_distinct(romania_pwid_hcv$id[romania_pwid_hcv$oat_ever == 1]) ## 1066 rows (correct)
+
+# restrict to columns of interest
+overall_data <- overall_data %>%
+  select(id, gender, age_4cat, ethnic_roma_ever, sex_work_ever, sex_work_ever_4cat, homeless_ever, oat_ever, drug_type_main)
+
+# generate a table
+table_vars <- c("gender", "age_4cat", "ethnic_roma_ever", "sex_work_ever_4cat", "homeless_ever", "oat_ever", "drug_type_main")
+
+overall_table <- CreateTableOne(
+  vars = table_vars,
+  data = overall_data
+)
+print(overall_table, showAllLevels = TRUE)
+
+# save overall data
+saveRDS(overall_data, file = "overall_data.rds")
 
 ## baseline hcv cohort
 
 # remove rows where hcv test result is missing
 romania_pwid_hcv <- romania_pwid_hcv[!is.na(romania_pwid_hcv$hcv_test_rslt), ]
+
+# distinct rows of oat
+n_distinct(romania_pwid_hcv$id[romania_pwid_hcv$oat_ever == 1]) ## 1066 rows (correct)
 
 # remove rows where hcv test result is indeterminate
 romania_pwid_hcv <- romania_pwid_hcv %>%
@@ -476,35 +403,46 @@ romania_pwid_hcv <- romania_pwid_hcv %>%
 
 # sequence by id 
 romania_pwid_hcv <- romania_pwid_hcv %>%
-  arrange(id) %>%
-  mutate(id_seq = cumsum(!duplicated(id))) 
-
-# create sequence of visits by id
-romania_pwid_hcv <- romania_pwid_hcv %>%
   group_by(id) %>%
   arrange(id, appointment_dte) %>%
-  mutate(appointment_seq = row_number())
-romania_pwid_hcv <- ungroup(romania_pwid_hcv)
+  mutate(id_seq = row_number()) %>%
+  ungroup(id)
+
+# keep rows where id_seq equals 1
+romania_pwid_hcv_bl <- romania_pwid_hcv %>%
+  filter(id_seq == 1)
+
+# generate a table
+table_vars <- c("gender", "age_4cat", "ethnic_roma_ever", "sex_work_ever_4cat", "homeless_ever", "oat_ever", "drug_type_main")
+
+overall_table <- CreateTableOne(
+  vars = table_vars,
+  data = romania_pwid_hcv_bl
+)
+print(overall_table, showAllLevels = TRUE)
+
+# distinct rows of oat
+n_distinct(romania_pwid_hcv_bl$id[romania_pwid_hcv_bl$oat_ever == 1]) ## 1065 rows (dropped one)
 
 # hcv test results
-romania_pwid_hcv_rslts <- table(romania_pwid_hcv$hcv_test_rslt)
-print(romania_pwid_hcv_rslts)
+table(romania_pwid_hcv_bl$hcv_test_rslt)
+
+# save df of all participants tested for hcv
+write.csv(romania_pwid_hcv_bl, "romania_pwid_hcv_bl.csv", row.names = FALSE)
+
+# keep rows where hcv negative
+romania_pwid_hcv_bl_neg <- romania_pwid_hcv_bl %>%
+  filter(hcv_test_rslt == 1)
+
+# save df of all hcv negative participants
+write.csv(romania_pwid_hcv_bl_neg, "romania_pwid_hcv_bl_neg.csv", row.names = FALSE)
+
+## longitudinal data
 
 # identify ids positive at baseline
 positive_at_baseline <- romania_pwid_hcv %>%
-  filter(appointment_seq == 1 & hcv_test_rslt == 2) %>%
+  filter(id_seq == 1 & hcv_test_rslt == 2) %>%
   pull(id)
-
-# include ids where positive at baseline
-positive_at_baseline_df <- romania_pwid_hcv %>%
-  filter((id %in% positive_at_baseline))
-
-# hcv test results by visit
-positive_at_baseline_df_summary <- table(positive_at_baseline_df$hcv_test_rslt)
-print(positive_at_baseline_df_summary)
-
-# save df of all participants tested for hcv
-write.csv(romania_pwid_hcv, "romania_pwid_hcv_bl.csv", row.names = FALSE)
 
 # remove ids where positive at baseline
 romania_pwid_hcv <- romania_pwid_hcv %>%
@@ -512,15 +450,17 @@ romania_pwid_hcv <- romania_pwid_hcv %>%
 
 # sequence by id 
 romania_pwid_hcv <- romania_pwid_hcv %>%
-  arrange(id) %>%
-  mutate(id_seq = cumsum(!duplicated(id)))
+  arrange(id, appointment_dte) %>%
+  group_by(id) %>%
+  mutate(id_seq = row_number()) %>%
+  ungroup(id)
 
 # highest value in the id_seq column
 highest_id_seq <- romania_pwid_hcv %>%
   summarise(max_id_seq = max(id_seq, na.rm = TRUE))
 print(highest_id_seq)
 
-# HCV test results by visit
+# hcv test results by visit
 romania_pwid_hcv_summary <- table(romania_pwid_hcv$appointment_seq, romania_pwid_hcv$hcv_test_rslt)
 print(romania_pwid_hcv_summary) 
 
@@ -530,15 +470,37 @@ romania_pwid_hcv <- romania_pwid_hcv %>%
   arrange(id) %>%
   mutate(hcv_test_seq = row_number())
 
-# HCV test results by test number
+# hcv test results by test number
 romania_pwid_hcv_summary <- table(romania_pwid_hcv$hcv_test_seq, romania_pwid_hcv$hcv_test_rslt)
 print(romania_pwid_hcv_summary)
+
+# distinct rows of id
+n_distinct(romania_pwid_hcv$id)
 
 # remove participants with only one test
 romania_pwid_hcv <- romania_pwid_hcv %>%
   group_by(id) %>%
   filter(!(max(hcv_test_seq, na.rm = TRUE) == 1)) %>%
   ungroup()
+
+# participants included in longitudinal analysis
+romania_pwid_hcv_long <- romania_pwid_hcv 
+
+romania_pwid_hcv_long <- romania_pwid_hcv_long %>%
+  arrange(id, appointment_dte) %>%
+  group_by(id) %>%
+  mutate(id_seq = row_number()) %>%
+  ungroup(id)
+
+romania_pwid_hcv_long <- romania_pwid_hcv_long %>%
+  filter(id_seq == 1)
+
+# distinct rows of id
+n_distinct(romania_pwid_hcv_long$id)
+count(romania_pwid_hcv_long)
+
+# save data for supplements
+write.csv(romania_pwid_hcv_long, "romania_pwid_hcv_included.csv", row.names = FALSE)
 
 # new id sequence
 romania_pwid_hcv <- romania_pwid_hcv %>%
@@ -553,7 +515,7 @@ highest_id_seq <- romania_pwid_hcv %>%
 cat("Highest value in id_seq:\n")
 print(highest_id_seq)
 
-# HCV test results by test number
+# hcv test results by test number
 romania_pwid_hcv_summary <- table(romania_pwid_hcv$hcv_test_seq, romania_pwid_hcv$hcv_test_rslt)
 print(romania_pwid_hcv_summary) 
 
@@ -567,7 +529,7 @@ romania_pwid_hcv_after_pos <- romania_pwid_hcv %>%
   ungroup() %>%
   filter(!is.na(first_hcv_positive_dte) & appointment_dte > first_hcv_positive_dte)
 
-# remove HCV tests after the first positive
+# remove hcv tests after the first positive
 romania_pwid_hcv <- romania_pwid_hcv %>%
   group_by(id) %>%
   mutate(
@@ -580,7 +542,7 @@ romania_pwid_hcv <- romania_pwid_hcv %>%
 romania_pwid_hcv <- romania_pwid_hcv %>%
   filter(is.na(first_hcv_positive_dte) | appointment_dte <= first_hcv_positive_dte)
 
-# HCV test results by visit
+# hcv test results by visit
 romania_pwid_hcv_summary <- table(romania_pwid_hcv$hcv_test_seq, romania_pwid_hcv$hcv_test_rslt)
 print(romania_pwid_hcv_summary)
 
@@ -616,19 +578,10 @@ romania_pwid_hcv_test <- romania_pwid_hcv %>%
   ) %>%
     dplyr::select(
     id, appointment_dte_start, appointment_dte_end,
-    hcv_test_rslt_start, hcv_test_rslt_end,
-    days_risk, py,
-    oat_12m, oat_ever,
-    sex_work_12m, sex_work_ever,
-    msm_12m, msm_ever,
-    homeless_12m, homeless_ever,
-    ethnic_roma_ever, hcv_ever,
-    gender, age_4cat, age_2cat,
-    syringe_1ml_ever, syringe_2ml_ever,
-    syringes_1ml_12m_prior, syringes_2ml_12m_prior,
-    syringes_1ml_12m_prior_5cat,
+    hcv_test_rslt_start, hcv_test_rslt_end, days_risk, py,
+    oat_ever, sex_work_ever_4cat, homeless_ever, ethnic_roma_ever, hcv_ever,
+    gender, age_4cat,
     drug_type_main,
-    heroin_12m, legal_12m, methadone_12m, polyconsumer_12m, drug_type_main
   ) %>%
   rename(
     appointment_dte = appointment_dte_start,
@@ -665,7 +618,7 @@ romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
   )
 
 # exposure variables 
-exposure_vars <- c("oat_12m", "oat_ever", "sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hcv_ever", "gender", "age_4cat", "syringe_1ml_ever", "syringe_2ml_ever", "syringes_1ml_12m_prior", "syringes_2ml_12m_prior", "drug_type_main", "heroin_12m", "legal_12m", "methadone_12m", "polyconsumer_12m", "syringes_1ml_12m_prior_5cat", "drug_type_main")
+exposure_vars <- c("oat_ever", "sex_work_ever_4cat", "homeless_ever", "ethnic_roma_ever", "hcv_ever", "gender", "age_4cat", "drug_type_main")
 
 # table of exposure variables
 exposure_vars <- CreateTableOne(vars = exposure_vars, data = romania_pwid_hcv_test)

@@ -304,53 +304,14 @@ table_vars <- c(
   "drug_type_main"
 )
 
-hiv_summary_table <- baseline_hiv %>%
-  pivot_longer(
-    cols = all_of(vars_order),
-    names_to = "Variable",
-    values_to = "Level"
-  ) %>%
-  mutate(
-    Variable = factor(Variable, levels = vars_order)
-  ) %>%
-  group_by(Variable, Level, hiv_test_rslt) %>%
-  summarise(Count = n(), .groups = "drop") %>%
-  pivot_wider(
-    names_from = hiv_test_rslt,
-    values_from = Count,
-    values_fill = 0
-  ) %>%
-  rename(
-    hiv_Negative = Negative,
-    hiv_Positive = Positive
-  ) %>%
-  mutate(
-    Total = hiv_Negative + hiv_Positive,
-    Proportion_Positive = (hiv_Positive / Total) * 100
-  ) %>%
-  arrange(Variable) %>%
-  group_by(Variable) %>%
-  mutate(
-    ref_level = case_when(
-      Variable == "age_4cat" ~ "<30",
-      Variable == "gender" ~ "Female",
-      Variable == "test_year" ~ "2013",
-      Variable == "sex_work_ever_4cat" ~ "No sex work - female",
-      Variable == "drug_type_main" ~ "Heroin",
-      TRUE ~ "0"
-    ),
-    ref_pos = hiv_Positive[Level == ref_level][1],
-    num_perc = sprintf("%d (%.1f)", hiv_Positive, Proportion_Positive),
-  ) %>%
-  ungroup()%>%
-  select(-ref_pos, -ref_level, -Proportion_Positive, -hiv_Negative, -hiv_Positive)
-
 # load data
 overall_data <- readRDS("overall_data.rds")
 baseline_analysis_hiv <- read.csv("romania_pwid_hiv_bl.csv")
-romania_pwid_hiv_test <- read.csv("romania_pwid_hiv_test.csv", stringsAsFactors = FALSE)
+baseline_analysis_hiv_neg <- read.csv("romania_pwid_hiv_bl_neg.csv")
+romania_pwid_hiv_included <- read.csv("romania_pwid_hiv_included.csv")
 
-table(baseline_analysis_hiv$oat_ever, useNA="ifany")
+# distinct rows of oat
+n_distinct(romania_pwid_hiv_bl$id[romania_pwid_hiv_bl$oat_ever == 1]) ## 1065 rows (dropped one)
 
 # overall column (all PWID)
 overall_column <- overall_data %>%
@@ -363,8 +324,7 @@ overall_column <- overall_data %>%
     Variable = factor(Variable, levels = table_vars)
   ) %>%
   group_by(Variable, Level) %>%
-  summarise(Count_first_col = n(), .groups = "drop") 
-View(overall_column)
+  summarise(Attended_service = n(), .groups = "drop") 
 
 # second column (recorded HIV test)
 second_column <- baseline_analysis_hiv %>%
@@ -383,138 +343,57 @@ second_column <- baseline_analysis_hiv %>%
 # merge into table
 hiv_included_table <- overall_column %>%
   left_join(second_column, by = c("Variable", "Level")) %>%
-  mutate(prop_col2 = Count_second_col/Count_first_col)
-
-View(hiv_included_table)
-
-# create included columns
-romania_pwid_hiv_test$included2 <- "Yes"
-baseline_analysis_hiv$included <- "No"
-
-# create included dataframe
-romania_pwid_hiv_test_included <- romania_pwid_hiv_test[, c("id", "included2")]
-romania_pwid_hiv_test_included <- romania_pwid_hiv_test_included[!duplicated(romania_pwid_hiv_test_included$id), ]
-baseline_analysis_hiv <- baseline_analysis_hiv %>%
-  left_join(romania_pwid_hiv_test_included, by = "id")
-
-# replace No includes with Yes and delete included2
-baseline_analysis_hiv$included[baseline_analysis_hiv$included2 == "Yes"] <- "Yes"
-baseline_analysis_hiv$included2 <- NULL
-
-# sequence by id 
-baseline_analysis_hiv <- baseline_analysis_hiv %>%
-  arrange(id, appointment_dte) %>%
-  group_by(id) %>%
-  mutate(id_seq = row_number()) %>%
-  ungroup()
-
-# highest value in the id_seq column
-highest_id_seq <- baseline_analysis_hiv %>%
-  summarise(max_id_seq = max(id_seq, na.rm = TRUE))
-cat("Highest value in id_seq:\n")
-print(highest_id_seq)
-
-# keep rows where appointment_seq equals 1
-baseline_analysis_hiv <- baseline_analysis_hiv %>%
-  filter(appointment_seq == 1)
-
-# change test results to 0 and 1
-baseline_analysis_hiv <- baseline_analysis_hiv %>%
-  mutate(hiv_test_rslt = case_when(
-    hiv_test_rslt == 1 ~ 0,
-    hiv_test_rslt == 2 ~ 1,
-    TRUE ~ hiv_test_rslt
-  ))
-
-# drop individuals who are positive at baseline
-baseline_analysis_hiv <- baseline_analysis_hiv %>%
-  filter(hiv_test_rslt == 0)
-
-# recode variables
-baseline_analysis_hiv <- baseline_analysis_hiv %>%
   mutate(
-    sex_work_12m = ifelse(is.na(sex_work_current), 0, sex_work_current),
-    msm_12m = ifelse(is.na(msm_current), 0, msm_current),
-    homeless_12m = ifelse(is.na(homeless_current), 0, homeless_current),
-    ethnic_roma_ever = ifelse(is.na(ethnic_roma), 0, ethnic_roma),
-    gender = ifelse(gender == 2, 0, gender) 
+    prop_col2 = Count_second_col / Attended_service,
+    Recorded_test = sprintf("%d (%.1f%%)", Count_second_col, prop_col2 * 100)
   )
 
-# tables of included vs. excluded
-included_summary_table <- baseline_analysis_hiv %>%
-  dplyr::select(
-    sex_work_12m, sex_work_ever,
-    homeless_12m, homeless_ever,
-    ethnic_roma_ever,
-    oat_12m, oat_ever,
-    gender, age_4cat, included
-  ) %>%
-  mutate(across(
-    c(
-      sex_work_12m, sex_work_ever,
-      homeless_12m, homeless_ever,
-      ethnic_roma_ever,
-      oat_12m, oat_ever,
-      gender, age_4cat
-    ),
-    as.character
-  )) %>%
+# third column (HIV negative at baseline)
+third_column <- baseline_analysis_hiv_neg %>%
+  mutate(across(all_of(table_vars), as.character)) %>%
   pivot_longer(
-    cols = c(
-      sex_work_12m, sex_work_ever,
-      homeless_12m, homeless_ever,
-      ethnic_roma_ever,
-      oat_12m, oat_ever,
-      gender, age_4cat
-    ),
+    cols = all_of(table_vars),
     names_to = "Variable",
     values_to = "Level"
   ) %>%
-  group_by(Variable, Level, included) %>%
-  summarise(
-    Count = n(),
-    .groups = "drop"
-  ) %>%
-  pivot_wider(
-    names_from = included,
-    values_from = Count,
-    values_fill = 0
-  ) %>%
-  rename(
-    Included_Yes = Yes,
-    Included_No = No
-  ) %>%
   mutate(
-    Total = Included_Yes + Included_No,
-    Proportion_Included = (Included_Yes / Total) * 100
+    Variable = factor(Variable, levels = table_vars)
   ) %>%
-  group_by(Variable) %>%
-  mutate(
-    ref_level = case_when(
-      Variable == "age_4cat" ~ "<30",
-      Variable == "gender" ~ "Female",
-      TRUE ~ "0"
-    ),
-    ref_yes = Included_Yes[Level == ref_level][1],
-    ref_no = Included_No[Level == ref_level][1],
-    OR = ifelse(Level == ref_level, 1, (Included_Yes / Included_No) / (ref_yes / ref_no)),
-    logOR = ifelse(Level == ref_level, NA, log(OR)),
-    SE_logOR = ifelse(Level == ref_level, NA, sqrt(1/Included_Yes + 1/Included_No + 1/ref_yes + 1/ref_no)),
-    CI_lower = ifelse(Level == ref_level, NA, exp(logOR - 1.96 * SE_logOR)),
-    CI_upper = ifelse(Level == ref_level, NA, exp(logOR + 1.96 * SE_logOR))
-  ) %>%
-  ungroup() %>%
-  select(-ref_level, -ref_yes, -ref_no, -logOR, -SE_logOR) %>%
-  mutate(
-    num_perc = sprintf("%d (%.1f)", Included_Yes, Proportion_Included),
-    or_formatted = ifelse(
-      is.na(OR),
-      "",
-      sprintf("%.2f (%.2f-%.2f)", OR, CI_lower, CI_upper)
-    )
-  )
+  group_by(Variable, Level) %>%
+  summarise(Count_third_col = n(), .groups = "drop")
 
-write.csv(included_summary_table, "hiv_included_summary_table.csv", row.names = FALSE)
+# merge into table
+hiv_included_table <- hiv_included_table %>%
+  left_join(third_column, by = c("Variable", "Level")) %>%
+  mutate(prop_col3 = Count_third_col/Count_second_col,
+  Negative_test = sprintf("%d (%.1f%%)", Count_third_col, prop_col3 * 100))
+
+# fourth column (subsequent HIV test)
+fourth_column <- romania_pwid_hiv_included %>%
+  mutate(across(all_of(table_vars), as.character)) %>%
+  pivot_longer(
+    cols = all_of(table_vars),
+    names_to = "Variable",
+    values_to = "Level"
+  ) %>%
+  mutate(
+    Variable = factor(Variable, levels = table_vars)
+  ) %>%
+  group_by(Variable, Level) %>%
+  summarise(Count_fourth_col = n(), .groups = "drop")
+
+# merge into table
+hiv_included_table <- hiv_included_table %>%
+  left_join(fourth_column, by = c("Variable", "Level")) %>%
+  mutate(prop_col4 = Count_fourth_col/Count_third_col,
+  Subsequent_test = sprintf("%d (%.1f%%)", Count_fourth_col, prop_col4 * 100))
+
+# keep columns of interest
+hiv_included_table <- hiv_included_table %>%
+  select(Variable, Level, Attended_service, Recorded_test, Negative_test, Subsequent_test)
+
+# save included vs. excluded table
+write.csv(hiv_included_table, "hiv_included_table.csv", row.names = FALSE)
 
 ## cox risk factor analysis
 
