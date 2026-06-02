@@ -442,6 +442,7 @@ write_xlsx(results_df, "cox_model_results_hiv.xlsx")
 
 # load dataframes
 processed_dataframes_hiv <- readRDS("processed_dataframes_hiv.rds")
+View(processed_dataframes_hiv[1])
 processed_dataframes_long_hiv <- readRDS("processed_dataframes_long_hiv.rds")
 
 # sequence hiv_test_rslt by id and identify any IDs with multiple positive hiv_test_rslts
@@ -457,7 +458,7 @@ print(multiple_positive_ids)
 multiple_positive_rows <- processed_dataframes_long_hiv[[1]] %>%
   filter(id %in% multiple_positive_ids$id)
 
-# Count incident infections (hiv_test_rslt == 1) in the first long dataframe
+# incident infections in the first long dataframe
 incident_infections <- sum(processed_dataframes_hiv[[1]]$hiv_test_rslt == 1, na.rm = TRUE)
 incident_infections_long <- sum(processed_dataframes_long_hiv[[1]]$hiv_test_rslt == 1, na.rm = TRUE)
 person_years_long <- sum(processed_dataframes_long_hiv[[1]]$time_at_risk, na.rm = TRUE)

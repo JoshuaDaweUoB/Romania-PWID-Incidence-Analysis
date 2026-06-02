@@ -232,7 +232,7 @@ results_hcv_s2$Disease <- "HCV"
 # combine
 combined_df_s2 <- rbind(results_hiv_s2, results_hcv_s2)
 
-# Combined plot
+# combined plot
 combined_incidence_plot_s2 <- ggplot(
   combined_df_s2,
   aes(x = two_year_interval,
@@ -269,3 +269,57 @@ combined_incidence_plot_s2 <- ggplot(
   )
 
 ggsave("plots/combined_hcv_hiv_incidence_plot_s2.png", plot = combined_incidence_plot_s2, width = 10, height = 6, dpi = 300)
+
+# sensitivity analysis three
+
+results_hcv_s3 <- read.csv("incidence_trends_hcv_s3.csv", stringsAsFactors = FALSE)
+results_hiv_s3 <- read.csv("incidence_trends_hiv_s3.csv", stringsAsFactors = FALSE)
+
+# rename columns
+names(results_hiv_s3)[names(results_hiv_s3) == "median_total_hiv_infections"] <- "infections"
+names(results_hcv_s3)[names(results_hcv_s3) == "median_total_hcv_infections"] <- "infections"
+
+# add disease identifier and combine
+results_hiv_s3$Disease <- "HIV"
+results_hcv_s3$Disease <- "HCV"
+View(results_hiv_s3)
+# combine
+combined_df_s3 <- rbind(results_hiv_s3, results_hcv_s3)
+
+# combined plot
+combined_incidence_plot_s3 <- ggplot(
+  combined_df_s3,
+  aes(x = two_year_interval,
+      y = median_incidence_rate,
+      group = Disease)
+) +
+  geom_line(aes(linetype = Disease),
+            color = "black",
+            linewidth = 0.8) +
+  geom_point(shape = 18,
+             size = 3,
+             color = "black") +
+  geom_ribbon(aes(ymin = lower_bound,
+                  ymax = upper_bound,
+                  fill = Disease),
+                  alpha = .2, color = NA) +
+  scale_x_discrete(expand = expansion(mult = c(0, 0))) +                  
+  scale_linetype_manual(values = c("HIV" = "solid",
+                                   "HCV" = "dashed")) +
+  theme_minimal(base_size = 14) +
+  labs(
+    x = "Two-yearly Interval",
+    y = "Incidence Rate per 100 Person-Years",
+    linetype = "Disease"
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.line.x = element_line(color = "black"),
+    axis.line.y = element_line(color = "black"),    
+    panel.grid.minor = element_blank(),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA),
+    legend.position = "bottom"
+  )
+
+ggsave("plots/combined_hcv_hiv_incidence_plot_s3.png", plot = combined_incidence_plot_s3, width = 10, height = 6, dpi = 300)

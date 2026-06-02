@@ -834,7 +834,7 @@ process_dataframe <- function(df) {
                  names_to = "year", 
                  names_prefix = "X", 
                  values_to = "time_at_risk") %>%
-    filter(!is.na(time_at_risk))  # Remove rows where time_at_risk is NA
+    filter(!is.na(time_at_risk))
   
   # recode hiv_test_rslt to 0 when it is invalid, NA, or year does not equal midpoint_year
   df_long <- df_long %>%

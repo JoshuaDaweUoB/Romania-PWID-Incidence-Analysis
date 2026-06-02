@@ -178,22 +178,6 @@ HCV_incidence_plot_midpoint <- ggplot(two_yearly_results_midpoint, aes(x = two_y
 # save the plot
 ggsave("plots/HCV_incidence_plot_midpoint_long.png", plot = HCV_incidence_plot_midpoint, width = 10, height = 6, dpi = 300)
 
-# calculate incidence rate
-cases <- 94
-person_years <- 766.4
-incidence_rate <- (cases / person_years) * 100
-
-# calculate standard error
-standard_error <- sqrt(cases) / person_years * 100
-
-# calculate 95% CI
-lower_bound <- incidence_rate - (1.96 * standard_error)
-upper_bound <- incidence_rate + (1.96 * standard_error)
-
-# print the results
-cat("Incidence Rate:", incidence_rate, "per 100 person-years\n")
-cat("95% CI: [", lower_bound, ", ", upper_bound, "]\n")
-
 ## sensitivity analysis for one dataframe with random imputation
 
 # load the first dataframe
@@ -299,10 +283,9 @@ saveRDS(processed_dataframes_hcv_s3, file = "processed_dataframes_hcv_s3.rds")
 
 # load _s3 data
 processed_dataframes_hcv_s3 <- readRDS("processed_dataframes_hcv_s3.rds")
-View(processed_dataframes_hcv_s3[1])
 
 # list for processed dataframes
-processed_dataframes_long_s3 <- list()
+processed_dataframes_hcv_long_s3 <- list()
 
 # function to reshape dataframes
 process_dataframe <- function(df) {
@@ -340,23 +323,21 @@ for (i in 1:length(processed_dataframes_hcv_s3)) {
   cat("Processing dataframe", i, "of", length(processed_dataframes_hcv_s3), "\n")
   
   # process each dataframe
-  processed_dataframes_long_s3[[i]] <- process_dataframe(processed_dataframes_hcv_s3[[i]])
+  processed_dataframes_hcv_long_s3[[i]] <- process_dataframe(processed_dataframes_hcv_s3[[i]])
 }
 
 # save long format processed dataframes to a file with the suffix _s3
-saveRDS(processed_dataframes_long_s3, file = "processed_dataframes_long_s3.rds")
-
-View(processed_dataframes_long_s3[[1]])
+saveRDS(processed_dataframes_hcv_long_s3, file = "processed_dataframes_long_hcv_s3.rds")
 
 # list for all 10000 dataframes
-all_two_yearly_results <- list()
+all_two_yearly_results_hcv <- list()
 
 # loop over 10000 dataframes
-for (i in 1:length(processed_dataframes_long_s3)) {
-  cat("Processing dataframe", i, "of", length(processed_dataframes_long_s3), "\n")
+for (i in 1:length(processed_dataframes_hcv_long_s3)) {
+  cat("Processing dataframe", i, "of", length(processed_dataframes_hcv_long_s3), "\n")
   
   # load dataframe
-  midpoint_dataframe <- processed_dataframes_long_s3[[i]]
+  midpoint_dataframe <- processed_dataframes_hcv_long_s3[[i]]
   
   # midpoint_year with NA if hcv_test_rslt is negative
   midpoint_dataframe <- midpoint_dataframe %>%
@@ -401,22 +382,22 @@ for (i in 1:length(processed_dataframes_long_s3)) {
     )
   
   # save results
-  all_two_yearly_results[[i]] <- two_yearly_results
+  all_two_yearly_results_hcv[[i]] <- two_yearly_results
 }
 
 # combine into one df
-combined_two_yearly_results_s3 <- bind_rows(all_two_yearly_results, .id = "iteration")
+combined_two_yearly_results_hcv_s3 <- bind_rows(all_two_yearly_results_hcv, .id = "iteration")
 
 # save to a csv file
-write.csv(combined_two_yearly_results_s3, "combined_two_yearly_results_s3.csv", row.names = FALSE)
+write.csv(combined_two_yearly_results_hcv_s3, "combined_two_yearly_results_hcv_s3.csv", row.names = FALSE)
 
 # view results
-View(combined_two_yearly_results_s3)
+View(combined_two_yearly_results_hcv_s3)
 
 # incidence trends over time
 
 # two-yearly intervals and calculate the median and percentiles
-incidence_trends_s3 <- combined_two_yearly_results_s3 %>%
+incidence_trends_hcv_s3 <- combined_two_yearly_results_hcv_s3 %>%
   group_by(two_year_interval) %>%
   summarise(
     median_incidence_rate = median(incidence_rate, na.rm = TRUE),
@@ -427,14 +408,14 @@ incidence_trends_s3 <- combined_two_yearly_results_s3 %>%
   )
 
 # incidence trends
-print(incidence_trends_s3)
-View(incidence_trends_s3)
+print(incidence_trends_hcv_s3)
+View(incidence_trends_hcv_s3)
 
 # save incidence trends to a csv file
-write.csv(incidence_trends_s3, "incidence_trends_s3.csv", row.names = FALSE)
+write.csv(incidence_trends_hcv_s3, "incidence_trends_hcv_s3.csv", row.names = FALSE)
 
 # plot for the incidence trends
-hcv_incidence_trends_plot <- ggplot(incidence_trends_s3, aes(x = two_year_interval, y = median_incidence_rate)) +
+hcv_incidence_trends_plot <- ggplot(incidence_trends_hcv_s3, aes(x = two_year_interval, y = median_incidence_rate)) +
   geom_line(group = 1, color = "gray", linewidth = 0.8, linetype = "solid") +
   geom_point(shape = 18, size = 4, color = "gray") +
   geom_errorbar(aes(ymin = lower_bound, ymax = upper_bound), width = 0.1, color = "black", size = 0.8) +
