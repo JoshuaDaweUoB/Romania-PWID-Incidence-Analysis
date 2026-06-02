@@ -9,20 +9,6 @@ setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/
 # load data
 baseline_analysis_hiv <- read.csv("romania_pwid_hiv_bl.csv")
 
-# relevel sex work variable
-baseline_analysis_hiv <- baseline_analysis_hiv %>%
-  mutate(
-    sex_work_ever_4cat = factor(
-      case_when(
-      sex_work_ever == 0 & gender == "Female" ~ 0,
-      sex_work_ever == 1 & gender == "Female" ~ 1, 
-      sex_work_ever == 0 & gender == "Male" ~ 2,
-      sex_work_ever == 1 & gender == "Male" ~ 3
-    ),
-    levels = c(0, 1, 2, 3), 
-    labels = c("No sex work - female", "Sex work - female", "No sex work - male", "Sex work - male")
-  ))
-
 # sequence by id 
 baseline_analysis_hiv <- baseline_analysis_hiv %>%
   arrange(id, appointment_dte) %>%
@@ -34,17 +20,6 @@ baseline_analysis_hiv <- baseline_analysis_hiv %>%
 highest_id_seq <- baseline_analysis_hiv %>%
   summarise(max_id_seq = max(id_seq, na.rm = TRUE))
 print(highest_id_seq)
-
-# keep rows where appointment_seq equals 1
-baseline_analysis_hiv <- baseline_analysis_hiv %>%
-  filter(appointment_seq == 1)
-
-# recode variables
-baseline_analysis_hiv <- baseline_analysis_hiv %>%
-  mutate(
-    ethnic_roma_ever = ifelse(is.na(ethnic_roma), 0, ethnic_roma),
-    gender = ifelse(gender == 2, 0, gender) 
-  )
 
 # change test results to 0 and 1
 baseline_analysis_hiv <- baseline_analysis_hiv %>%
@@ -71,7 +46,6 @@ baseline_hiv <- baseline_analysis_hiv %>%
     drug_type_main = as.factor(drug_type_main),
     hiv_test_rslt_bin = ifelse(hiv_test_rslt == "Positive", 1, 0)
   )
-table(baseline_analysis_hiv$drug_type_main, useNA = "ifany")
 
 # create unadjusted summary table
 vars_order <- c(
@@ -122,9 +96,8 @@ hiv_summary_table <- baseline_hiv %>%
     ref_pos = hiv_Positive[Level == ref_level][1],
     num_perc = sprintf("%d (%.1f)", hiv_Positive, Proportion_Positive),
   ) %>%
-  ungroup()%>%
-  select(-ref_pos, -ref_level, -Proportion_Positive, -hiv_Negative, -hiv_Positive)
-
+  ungroup()
+  
 # unadjusted PRs
 
 # exposures
@@ -326,7 +299,7 @@ overall_column <- overall_data %>%
   group_by(Variable, Level) %>%
   summarise(Attended_service = n(), .groups = "drop") 
 
-# second column (recorded HIV test)
+# second column (recorded hiv test)
 second_column <- baseline_analysis_hiv %>%
   mutate(across(all_of(table_vars), as.character)) %>%
   pivot_longer(
@@ -348,7 +321,7 @@ hiv_included_table <- overall_column %>%
     Recorded_test = sprintf("%d (%.1f%%)", Count_second_col, prop_col2 * 100)
   )
 
-# third column (HIV negative at baseline)
+# third column (hiv negative at baseline)
 third_column <- baseline_analysis_hiv_neg %>%
   mutate(across(all_of(table_vars), as.character)) %>%
   pivot_longer(
@@ -368,7 +341,7 @@ hiv_included_table <- hiv_included_table %>%
   mutate(prop_col3 = Count_third_col/Count_second_col,
   Negative_test = sprintf("%d (%.1f%%)", Count_third_col, prop_col3 * 100))
 
-# fourth column (subsequent HIV test)
+# fourth column (subsequent hiv test)
 fourth_column <- romania_pwid_hiv_included %>%
   mutate(across(all_of(table_vars), as.character)) %>%
   pivot_longer(
@@ -388,10 +361,6 @@ hiv_included_table <- hiv_included_table %>%
   mutate(prop_col4 = Count_fourth_col/Count_third_col,
   Subsequent_test = sprintf("%d (%.1f%%)", Count_fourth_col, prop_col4 * 100))
 
-# keep columns of interest
-hiv_included_table <- hiv_included_table %>%
-  select(Variable, Level, Attended_service, Recorded_test, Negative_test, Subsequent_test)
-
 # save included vs. excluded table
 write.csv(hiv_included_table, "hiv_included_table.csv", row.names = FALSE)
 
@@ -400,24 +369,29 @@ write.csv(hiv_included_table, "hiv_included_table.csv", row.names = FALSE)
 # load data
 romania_pwid_hiv_test <- read.csv("romania_pwid_hiv_test.csv", stringsAsFactors = FALSE)
 
-## cox risk factor analysis
-
-# load data
-romania_pwid_hiv_test <- read.csv("romania_pwid_hiv_test.csv", stringsAsFactors = FALSE)
-
 # exposures
-exposure_vars <- c("oat_12m", "oat_ever", "sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever", "gender", "age_4cat", "syringe_1ml_ever", "syringe_2ml_ever", "drug_type_main", "heroin_12m", "legal_12m", "methadone_12m", "polyconsumer_12m", "syringes_1ml_12m_prior_5cat", "main_drug_injected_4cat")
+exposure_vars <- c("gender", "age_4cat", "ethnic_roma_ever", "sex_work_ever_4cat", "oat_ever", "homeless_ever", "drug_type_main")
 
 results_list <- list()
 
-# Relevel binary variables to factors with "No"/"Yes"
-binary_vars <- c("oat_12m", "oat_ever", "sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hiv_ever", "syringe_1ml_ever", "syringe_2ml_ever", "heroin_12m", "legal_12m", "methadone_12m", "polyconsumer_12m")
+# binary variables to factors with "No"/"Yes"
+binary_vars <- c("oat_ever", "homeless_ever", "ethnic_roma_ever")
+
 for (var in binary_vars) {
   romania_pwid_hiv_test[[var]] <- factor(ifelse(romania_pwid_hiv_test[[var]] == 1, "Yes", "No"), levels = c("No", "Yes"))
 }
 
+romania_pwid_hiv_test$sex_work_ever_4cat <- factor(
+  romania_pwid_hiv_test$sex_work_ever_4cat,
+  levels = c(
+    "No sex work - male",
+    "No sex work - female",
+    "Sex work - female",
+    "Sex work - male"
+  )
+)
+
 for (var in exposure_vars) {
-  # If variable is a factor, get levels; otherwise, use unique values
   levels_var <- if (is.factor(romania_pwid_hiv_test[[var]])) {
     levels(romania_pwid_hiv_test[[var]])
   } else {
@@ -429,7 +403,7 @@ for (var in exposure_vars) {
     cases <- sum(subset_data$hiv_test_rslt == 1, na.rm = TRUE)
     person_years <- sum(subset_data$py, na.rm = TRUE)
     
-    # Fit Cox model for the variable (overall, not per level)
+    # Cox model for the variable (overall, not per level)
     formula <- as.formula(paste("Surv(py, hiv_test_rslt) ~", var))
     model <- coxph(formula, data = romania_pwid_hiv_test)
     hr <- exp(coef(model))
@@ -463,62 +437,6 @@ for (var in exposure_vars) {
 
 results_df <- do.call(rbind, results_list)
 write_xlsx(results_df, "cox_model_results_hiv.xlsx")
-
-# stratified by sex
-romania_pwid_hiv_test_male <- romania_pwid_hiv_test[romania_pwid_hiv_test$gender == "Male", ]
-romania_pwid_hiv_test_female <- romania_pwid_hiv_test[romania_pwid_hiv_test$gender == "Female", ]
-exposure_vars_strat <- setdiff(exposure_vars, "gender")
-
-# Function to run your analysis loop, using exposure_vars_strat
-run_cox_analysis <- function(data, gender_label) {
-  results_list <- list()
-  for (var in exposure_vars_strat) {  # Use exposure_vars_strat here!
-    levels_var <- if (is.factor(data[[var]])) {
-      levels(data[[var]])
-    } else {
-      unique(data[[var]])
-    }
-    for (lev in levels_var) {
-      subset_data <- data[data[[var]] == lev & !is.na(data[[var]]), ]
-      cases <- sum(subset_data$hiv_test_rslt == 1, na.rm = TRUE)
-      person_years <- sum(subset_data$py, na.rm = TRUE)
-      formula <- as.formula(paste("Surv(py, hiv_test_rslt) ~", var))
-      model <- coxph(formula, data = data)
-      hr <- exp(coef(model))
-      ci <- exp(confint(model))
-      if (paste0(var, lev) %in% names(hr)) {
-        results_list[[length(results_list) + 1]] <- data.frame(
-          Gender = gender_label,
-          Variable = var,
-          Level = lev,
-          HR = hr[paste0(var, lev)],
-          CI_lower = ci[paste0(var, lev), 1],
-          CI_upper = ci[paste0(var, lev), 2],
-          Cases = cases,
-          Person_Years = person_years
-        )
-      } else {
-        results_list[[length(results_list) + 1]] <- data.frame(
-          Gender = gender_label,
-          Variable = var,
-          Level = lev,
-          HR = NA,
-          CI_lower = NA,
-          CI_upper = NA,
-          Cases = cases,
-          Person_Years = person_years
-        )
-      }
-    }
-  }
-  do.call(rbind, results_list)
-}
-
-# Now run the analysis
-results_male <- run_cox_analysis(romania_pwid_hiv_test_male, "Male")
-results_female <- run_cox_analysis(romania_pwid_hiv_test_female, "Female")
-results_df_gender <- rbind(results_male, results_female)
-write_xlsx(results_df_gender, "cox_model_results_hiv_by_gender.xlsx")
 
 ## longitudinal analysis with Rubin's correction
 

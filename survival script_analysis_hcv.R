@@ -9,20 +9,6 @@ setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/
 # load data
 baseline_analysis_hcv <- read.csv("romania_pwid_hcv_bl.csv")
 
-# relevel sex work variable
-baseline_analysis_hcv <- baseline_analysis_hcv %>%
-  mutate(
-    sex_work_ever_4cat = factor(
-      case_when(
-      sex_work_ever == 0 & gender == "Female" ~ 0,
-      sex_work_ever == 1 & gender == "Female" ~ 1, 
-      sex_work_ever == 0 & gender == "Male" ~ 2,
-      sex_work_ever == 1 & gender == "Male" ~ 3
-    ),
-    levels = c(0, 1, 2, 3), 
-    labels = c("No sex work - female", "Sex work - female", "No sex work - male", "Sex work - male")
-  ))
-
 # sequence by id 
 baseline_analysis_hcv <- baseline_analysis_hcv %>%
   arrange(id, appointment_dte) %>%
@@ -34,17 +20,6 @@ baseline_analysis_hcv <- baseline_analysis_hcv %>%
 highest_id_seq <- baseline_analysis_hcv %>%
   summarise(max_id_seq = max(id_seq, na.rm = TRUE))
 print(highest_id_seq)
-
-# keep rows where appointment_seq equals 1
-baseline_analysis_hcv <- baseline_analysis_hcv %>%
-  filter(appointment_seq == 1)
-
-# recode variables
-baseline_analysis_hcv <- baseline_analysis_hcv %>%
-  mutate(
-    ethnic_roma_ever = ifelse(is.na(ethnic_roma), 0, ethnic_roma),
-    gender = ifelse(gender == 2, 0, gender) 
-  )
 
 # change test results to 0 and 1
 baseline_analysis_hcv <- baseline_analysis_hcv %>%
@@ -71,7 +46,6 @@ baseline_hcv <- baseline_analysis_hcv %>%
     drug_type_main = as.factor(drug_type_main),
     hcv_test_rslt_bin = ifelse(hcv_test_rslt == "Positive", 1, 0)
   )
-table(baseline_analysis_hcv$drug_type_main, useNA = "ifany")
 
 # create unadjusted summary table
 vars_order <- c(
@@ -122,9 +96,8 @@ hcv_summary_table <- baseline_hcv %>%
     ref_pos = hcv_Positive[Level == ref_level][1],
     num_perc = sprintf("%d (%.1f)", hcv_Positive, Proportion_Positive),
   ) %>%
-  ungroup()%>%
-  select(-ref_pos, -ref_level, -Proportion_Positive, -hcv_Negative, -hcv_Positive)
-
+  ungroup()
+  
 # unadjusted PRs
 
 # exposures
@@ -388,10 +361,6 @@ hcv_included_table <- hcv_included_table %>%
   mutate(prop_col4 = Count_fourth_col/Count_third_col,
   Subsequent_test = sprintf("%d (%.1f%%)", Count_fourth_col, prop_col4 * 100))
 
-# keep columns of interest
-hcv_included_table <- hcv_included_table %>%
-  select(Variable, Level, Attended_service, Recorded_test, Negative_test, Subsequent_test)
-
 # save included vs. excluded table
 write.csv(hcv_included_table, "hcv_included_table.csv", row.names = FALSE)
 
@@ -400,24 +369,29 @@ write.csv(hcv_included_table, "hcv_included_table.csv", row.names = FALSE)
 # load data
 romania_pwid_hcv_test <- read.csv("romania_pwid_hcv_test.csv", stringsAsFactors = FALSE)
 
-## cox risk factor analysis
-
-# load data
-romania_pwid_hcv_test <- read.csv("romania_pwid_hcv_test.csv", stringsAsFactors = FALSE)
-
 # exposures
-exposure_vars <- c("oat_12m", "oat_ever", "sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hcv_ever", "gender", "age_4cat", "syringe_1ml_ever", "syringe_2ml_ever", "drug_type_main", "heroin_12m", "legal_12m", "methadone_12m", "polyconsumer_12m", "syringes_1ml_12m_prior_5cat", "main_drug_injected_4cat")
+exposure_vars <- c("gender", "age_4cat", "ethnic_roma_ever", "sex_work_ever_4cat", "oat_ever", "homeless_ever", "drug_type_main")
 
 results_list <- list()
 
-# Relevel binary variables to factors with "No"/"Yes"
-binary_vars <- c("oat_12m", "oat_ever", "sex_work_12m", "sex_work_ever", "msm_12m", "msm_ever", "homeless_12m", "homeless_ever", "ethnic_roma_ever", "hcv_ever", "syringe_1ml_ever", "syringe_2ml_ever", "heroin_12m", "legal_12m", "methadone_12m", "polyconsumer_12m")
+# binary variables to factors with "No"/"Yes"
+binary_vars <- c("oat_ever", "homeless_ever", "ethnic_roma_ever")
+
 for (var in binary_vars) {
   romania_pwid_hcv_test[[var]] <- factor(ifelse(romania_pwid_hcv_test[[var]] == 1, "Yes", "No"), levels = c("No", "Yes"))
 }
 
+romania_pwid_hcv_test$sex_work_ever_4cat <- factor(
+  romania_pwid_hcv_test$sex_work_ever_4cat,
+  levels = c(
+    "No sex work - male",
+    "No sex work - female",
+    "Sex work - female",
+    "Sex work - male"
+  )
+)
+
 for (var in exposure_vars) {
-  # If variable is a factor, get levels; otherwise, use unique values
   levels_var <- if (is.factor(romania_pwid_hcv_test[[var]])) {
     levels(romania_pwid_hcv_test[[var]])
   } else {
@@ -429,7 +403,7 @@ for (var in exposure_vars) {
     cases <- sum(subset_data$hcv_test_rslt == 1, na.rm = TRUE)
     person_years <- sum(subset_data$py, na.rm = TRUE)
     
-    # Fit Cox model for the variable (overall, not per level)
+    # Cox model for the variable (overall, not per level)
     formula <- as.formula(paste("Surv(py, hcv_test_rslt) ~", var))
     model <- coxph(formula, data = romania_pwid_hcv_test)
     hr <- exp(coef(model))
@@ -464,66 +438,11 @@ for (var in exposure_vars) {
 results_df <- do.call(rbind, results_list)
 write_xlsx(results_df, "cox_model_results_hcv.xlsx")
 
-# stratified by sex
-romania_pwid_hcv_test_male <- romania_pwid_hcv_test[romania_pwid_hcv_test$gender == "Male", ]
-romania_pwid_hcv_test_female <- romania_pwid_hcv_test[romania_pwid_hcv_test$gender == "Female", ]
-exposure_vars_strat <- setdiff(exposure_vars, "gender")
-
-# Function to run your analysis loop, using exposure_vars_strat
-run_cox_analysis <- function(data, gender_label) {
-  results_list <- list()
-  for (var in exposure_vars_strat) {  # Use exposure_vars_strat here!
-    levels_var <- if (is.factor(data[[var]])) {
-      levels(data[[var]])
-    } else {
-      unique(data[[var]])
-    }
-    for (lev in levels_var) {
-      subset_data <- data[data[[var]] == lev & !is.na(data[[var]]), ]
-      cases <- sum(subset_data$hcv_test_rslt == 1, na.rm = TRUE)
-      person_years <- sum(subset_data$py, na.rm = TRUE)
-      formula <- as.formula(paste("Surv(py, hcv_test_rslt) ~", var))
-      model <- coxph(formula, data = data)
-      hr <- exp(coef(model))
-      ci <- exp(confint(model))
-      if (paste0(var, lev) %in% names(hr)) {
-        results_list[[length(results_list) + 1]] <- data.frame(
-          Gender = gender_label,
-          Variable = var,
-          Level = lev,
-          HR = hr[paste0(var, lev)],
-          CI_lower = ci[paste0(var, lev), 1],
-          CI_upper = ci[paste0(var, lev), 2],
-          Cases = cases,
-          Person_Years = person_years
-        )
-      } else {
-        results_list[[length(results_list) + 1]] <- data.frame(
-          Gender = gender_label,
-          Variable = var,
-          Level = lev,
-          HR = NA,
-          CI_lower = NA,
-          CI_upper = NA,
-          Cases = cases,
-          Person_Years = person_years
-        )
-      }
-    }
-  }
-  do.call(rbind, results_list)
-}
-
-# Now run the analysis
-results_male <- run_cox_analysis(romania_pwid_hcv_test_male, "Male")
-results_female <- run_cox_analysis(romania_pwid_hcv_test_female, "Female")
-results_df_gender <- rbind(results_male, results_female)
-write_xlsx(results_df_gender, "cox_model_results_hcv_by_gender.xlsx")
-
 ## longitudinal analysis with Rubin's correction
 
 # load dataframes
 processed_dataframes_hcv <- readRDS("processed_dataframes_hcv.rds")
+View(processed_dataframes_hcv[1])
 processed_dataframes_long_hcv <- readRDS("processed_dataframes_long_hcv.rds")
 
 # sequence hcv_test_rslt by id and identify any IDs with multiple positive hcv_test_rslts
@@ -539,7 +458,7 @@ print(multiple_positive_ids)
 multiple_positive_rows <- processed_dataframes_long_hcv[[1]] %>%
   filter(id %in% multiple_positive_ids$id)
 
-# Count incident infections (hcv_test_rslt == 1) in the first long dataframe
+# incident infections in the first long dataframe
 incident_infections <- sum(processed_dataframes_hcv[[1]]$hcv_test_rslt == 1, na.rm = TRUE)
 incident_infections_long <- sum(processed_dataframes_long_hcv[[1]]$hcv_test_rslt == 1, na.rm = TRUE)
 person_years_long <- sum(processed_dataframes_long_hcv[[1]]$time_at_risk, na.rm = TRUE)
@@ -678,7 +597,7 @@ mean_person_years_hcv <- sapply(2013:2022, function(year) {
 })
 print(mean_person_years_hcv)
 
-# overall mean number of HCV infections and person-years
+# overall mean number of hcv infections and person-years
 overall_mean_infections_hcv <- mean(rowSums(final_summed_df_hcv[paste0("hcv_test_", 2013:2022)], na.rm = TRUE), na.rm = TRUE)
 overall_mean_person_years_hcv <- mean(rowSums(final_summed_df_hcv[paste0("X", 2013:2022)], na.rm = TRUE), na.rm = TRUE)
 
@@ -688,7 +607,7 @@ results_df_mean_hcv <- data.frame(
   Incidence_rate = c(mean_incidence_rate_hcv, yearly_means_hcv),
   Lower_bound = c(lower_bound_overall_hcv, yearly_lower_bounds_hcv),
   Upper_bound = c(upper_bound_overall_hcv, yearly_upper_bounds_hcv),
-  Mean_HCV_infections = c(overall_mean_infections_hcv, mean_hcv_infections_hcv),
+  Mean_hcv_infections = c(overall_mean_infections_hcv, mean_hcv_infections_hcv),
   Mean_person_years = c(overall_mean_person_years_hcv, mean_person_years_hcv)
 )
 
@@ -766,7 +685,7 @@ rubin_results <- lapply(intervals, function(interval) {
     Incidence_rate = mean_ir,
     Lower_bound = ci_lower,
     Upper_bound = ci_upper,
-    Mean_HCV_infections = mean(infections, na.rm = TRUE),
+    Mean_hcv_infections = mean(infections, na.rm = TRUE),
     Mean_person_years = mean(person_years, na.rm = TRUE)
   )
 })
@@ -801,7 +720,7 @@ overall_row <- data.frame(
   Incidence_rate = mean_incidence_rate,
   Lower_bound = lower_bound_overall,
   Upper_bound = upper_bound_overall,
-  Mean_HCV_infections = overall_mean_infections_hcv,
+  Mean_hcv_infections = overall_mean_infections_hcv,
   Mean_person_years = overall_mean_person_years_hcv
 )
 
@@ -827,13 +746,13 @@ write.csv(results_df_two_yearly_rubin_hcv, "results_df_two_yearly_rubin_hcv.csv"
 results_df_two_yearly_rubin_hcv <- read.csv("results_df_two_yearly_rubin_hcv.csv", stringsAsFactors = FALSE)
 
 # numeric columns
-results_df_two_yearly_rubin_hcv$Mean_HCV_infections <- as.numeric(results_df_two_yearly_rubin_hcv$Mean_HCV_infections)
+results_df_two_yearly_rubin_hcv$Mean_hcv_infections <- as.numeric(results_df_two_yearly_rubin_hcv$Mean_hcv_infections)
 results_df_two_yearly_rubin_hcv$Mean_person_years <- as.numeric(results_df_two_yearly_rubin_hcv$Mean_person_years)
 
 # assign 2013-2014 as reference category
 ref_idx <- which(results_df_two_yearly_rubin_hcv$Interval == "2013-2014")
 
-cases <- results_df_two_yearly_rubin_hcv$Mean_HCV_infections
+cases <- results_df_two_yearly_rubin_hcv$Mean_hcv_infections
 py <- results_df_two_yearly_rubin_hcv$Mean_person_years
 
 ref_cases <- cases[ref_idx]

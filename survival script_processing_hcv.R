@@ -37,7 +37,7 @@ romania_pwid_treatment <- romania_pwid_treatment %>%
     oat_seq = cumsum(ifelse(oat == 1, 1, 0)),
     oat_first_dte = min(appointment_dte[oat == 1], na.rm = TRUE)
   ) %>%
-  ungroup()
+  ungroup()  
 
 ## exposure data
 
@@ -270,7 +270,7 @@ romania_pwid_hcv <- romania_pwid_hcv %>%
     ethnic_roma_ever = factor(ethnic_roma_ever, levels = c(0, 1)),    
   )
 
-current_vars <- c("oat", "oat_ever", "sex_work_current", "sex_work_ever", "homeless_current", "homeless_ever")
+current_vars <- c("oat_ever", "sex_work_ever", "homeless_ever")
 table_current <- CreateTableOne(vars = current_vars, data = romania_pwid_hcv)
 print(table_current, showAllLevels = TRUE)
 
@@ -288,7 +288,7 @@ romania_pwid_hcv <- romania_pwid_hcv %>%
   ungroup()
 
 # set _ever variables to 0 if not exposed
-ever_vars <- c("gender", "age_4cat", "ethnic_roma_ever", "oat_ever", "sex_work_ever", "homeless_ever", "drug_type_main")
+ever_vars <- c("ethnic_roma_ever", "oat_ever", "sex_work_ever", "homeless_ever")
 romania_pwid_hcv <- romania_pwid_hcv %>%
   mutate(
     across(all_of(ever_vars),
@@ -299,7 +299,7 @@ romania_pwid_hcv <- romania_pwid_hcv %>%
 # select and order vars
 romania_pwid_hcv <- romania_pwid_hcv %>%
   dplyr::select(
-    id, oat_ever, sex_work_ever, homeless_ever, ethnic_roma_ever, everything())
+    id, gender, age_4cat, oat_ever, sex_work_ever, homeless_ever, ethnic_roma_ever, drug_type_main, everything())
 
 ever_vars <- c("gender", "age_4cat", "ethnic_roma_ever", "oat_ever", "sex_work_ever", "homeless_ever", "drug_type_main")
 table_ever <- CreateTableOne(vars = ever_vars, data = romania_pwid_hcv)
@@ -624,7 +624,7 @@ ir <- (cases / person_time) * 100
 lower <- (qchisq(0.025, 2 * cases) / 2) / person_time * 100
 upper <- (qchisq(0.975, 2 * (cases + 1)) / 2) / person_time * 100
 
-cat("HCV Incidence Rate:", round(ir, 2), "per 100 PY (95% CI:", round(lower, 2), "-", round(upper, 2), 
+cat("hcv Incidence Rate:", round(ir, 2), "per 100 PY (95% CI:", round(lower, 2), "-", round(upper, 2), 
     "| Cases:", cases, "| Person-years:", round(person_time, 2), ")\n")
 
 ## random-point sampling with 10000 iterations approach
@@ -834,7 +834,7 @@ process_dataframe <- function(df) {
                  names_to = "year", 
                  names_prefix = "X", 
                  values_to = "time_at_risk") %>%
-    filter(!is.na(time_at_risk))  # Remove rows where time_at_risk is NA
+    filter(!is.na(time_at_risk))
   
   # recode hcv_test_rslt to 0 when it is invalid, NA, or year does not equal midpoint_year
   df_long <- df_long %>%
@@ -865,4 +865,3 @@ for (i in 1:length(processed_dataframes_hcv)) {
 
 # save long dataframes
 saveRDS(processed_dataframes_long_hcv, file = "processed_dataframes_long_hcv.rds")
-
