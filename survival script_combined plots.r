@@ -282,7 +282,7 @@ names(results_hcv_s3)[names(results_hcv_s3) == "median_total_hcv_infections"] <-
 # add disease identifier and combine
 results_hiv_s3$Disease <- "HIV"
 results_hcv_s3$Disease <- "HCV"
-View(results_hiv_s3)
+
 # combine
 combined_df_s3 <- rbind(results_hiv_s3, results_hcv_s3)
 

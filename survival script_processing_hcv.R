@@ -54,7 +54,7 @@ romania_pwid_hcv_combined <- romania_pwid_raw[!is.na(romania_pwid_raw$hcv_test_r
 write.csv(romania_pwid_hcv_combined, "romania_pwid_hcv_combined.csv")
 
 # recode gender 
-romania_pwid_hcv <- romania_pwid_raw %>%
+romania_pwid_hcv <- romania_pwid_hcv_combined %>%
   mutate(
     gender = case_when(
       gender == 2 ~ 0,
