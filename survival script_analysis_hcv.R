@@ -8,6 +8,7 @@ setwd("C:/Users/vl22683/OneDrive - University of Bristol/Documents/Publications/
  
 # load data
 baseline_analysis_hcv <- read.csv("romania_pwid_hcv_bl.csv")
+names(baseline_analysis_hcv)
 
 # sequence by id 
 baseline_analysis_hcv <- baseline_analysis_hcv %>%
@@ -41,9 +42,13 @@ baseline_hcv <- baseline_analysis_hcv %>%
     gender = as.factor(gender),
     ethnic_roma_ever = as.factor(ethnic_roma_ever),
     oat_ever = as.factor(oat_ever),
-    sex_work_ever_4cat = as.factor(sex_work_ever_4cat),
+    sex_work_ever_4cat = factor(
+      sex_work_ever_4cat,
+      levels = c("Women, no sex work", "Women, sex work", "Men, no sex work", "Men, sex work")
+    ),
     homeless_ever = as.factor(homeless_ever),
     drug_type_main = as.factor(drug_type_main),
+    appointment_year = as.factor(appointment_year),
     hcv_test_rslt_bin = ifelse(hcv_test_rslt == "Positive", 1, 0)
   )
 
@@ -55,7 +60,8 @@ vars_order <- c(
   "sex_work_ever_4cat",
   "homeless_ever",
   "oat_ever",
-  "drug_type_main"
+  "drug_type_main",
+  "appointment_year"
 )
 
 hcv_summary_table <- baseline_hcv %>%
@@ -88,8 +94,8 @@ hcv_summary_table <- baseline_hcv %>%
     ref_level = case_when(
       Variable == "age_4cat" ~ "<30",
       Variable == "gender" ~ "Female",
-      Variable == "test_year" ~ "2013",
-      Variable == "sex_work_ever_4cat" ~ "No sex work - female",
+      Variable == "appointment_year" ~ "2013",
+      Variable == "sex_work_ever_4cat" ~ "Women, no sex work",
       Variable == "drug_type_main" ~ "Heroin",
       TRUE ~ "0"
     ),
@@ -101,7 +107,7 @@ hcv_summary_table <- baseline_hcv %>%
 # unadjusted PRs
 
 # exposures
-exposures <- c("gender", "age_4cat", "ethnic_roma_ever", "sex_work_ever_4cat", "homeless_ever", "oat_ever", "drug_type_main")
+exposures <- c("gender", "age_4cat", "ethnic_roma_ever", "sex_work_ever_4cat", "homeless_ever", "oat_ever", "drug_type_main", "appointment_year")
 
 unadj_pr_list <- lapply(exposures, function(var) {
 
@@ -131,14 +137,14 @@ hcv_summary_table <- hcv_summary_table %>%
 
 # models adjusting for gender, age and roma ethnicity
 
-adj1_vars <- c("age_4cat", "gender", "ethnic_roma_ever")
+adj1_vars <- c("age_4cat", "gender", "ethnic_roma_ever", "appointment_year")
 
 results_list <- list()
 
 for (i in adj1_vars) {
 
   model <- glm(
-    hcv_test_rslt_bin ~ age_4cat + gender + ethnic_roma_ever,
+    hcv_test_rslt_bin ~ age_4cat + gender + ethnic_roma_ever + appointment_year ,
     data = baseline_hcv,
     family = poisson(link = "log")
   )
@@ -175,14 +181,14 @@ hcv_summary_table <- hcv_summary_table %>%
 
 # model adjusting for sex, age, roma, homelessness, oat, drug type
 
-adj2_vars <- c("age_4cat", "gender", "ethnic_roma_ever", "homeless_ever", "oat_ever", "drug_type_main")
+adj2_vars <- c("age_4cat", "gender", "ethnic_roma_ever", "homeless_ever", "oat_ever", "drug_type_main", "appointment_year")
 
 results_list <- list()
 
 for (i in adj2_vars) {
 
   model <- glm(
-    hcv_test_rslt_bin ~ age_4cat + gender + ethnic_roma_ever + homeless_ever + oat_ever + drug_type_main,
+    hcv_test_rslt_bin ~ age_4cat + gender + ethnic_roma_ever + homeless_ever + oat_ever + drug_type_main + appointment_year,
     data = baseline_hcv,
     family = poisson(link = "log")
   )
@@ -219,14 +225,14 @@ hcv_summary_table <- hcv_summary_table %>%
 
 # model adjusting for age, roma, sex work, homelessness, oat, drug type
 
-adj3_vars <- c("age_4cat", "ethnic_roma_ever", "sex_work_ever_4cat", "homeless_ever", "oat_ever", "drug_type_main")
+adj3_vars <- c("age_4cat", "ethnic_roma_ever", "sex_work_ever_4cat", "homeless_ever", "oat_ever", "drug_type_main", "appointment_year")
 
 results_list <- list()
 
 for (i in adj3_vars) {
 
   model <- glm(
-    hcv_test_rslt_bin ~ age_4cat + sex_work_ever_4cat + ethnic_roma_ever + homeless_ever + oat_ever + drug_type_main,
+    hcv_test_rslt_bin ~ age_4cat + sex_work_ever_4cat + ethnic_roma_ever + homeless_ever + oat_ever + drug_type_main + appointment_year ,
     data = baseline_hcv,
     family = poisson(link = "log")
   )
@@ -262,7 +268,7 @@ hcv_summary_table <- hcv_summary_table %>%
   left_join(model3_pr_all, by = c("Variable", "Level"))
 
 # save
-write.csv(hcv_summary_table, "hcv_summary_table.csv", row.names = FALSE)
+write.csv(hcv_summary_table, "table2_hcv_summary_table.csv", row.names = FALSE)
 
 ## differences between excluded and included in longitudinal analysis
 
@@ -362,7 +368,7 @@ hcv_included_table <- hcv_included_table %>%
   Subsequent_test = sprintf("%d (%.1f%%)", Count_fourth_col, prop_col4 * 100))
 
 # save included vs. excluded table
-write.csv(hcv_included_table, "hcv_included_table.csv", row.names = FALSE)
+write.csv(hcv_included_table, "tables2_hcv_included_table.csv", row.names = FALSE)
 
 ## cox risk factor analysis
 
@@ -370,7 +376,7 @@ write.csv(hcv_included_table, "hcv_included_table.csv", row.names = FALSE)
 romania_pwid_hcv_test <- read.csv("romania_pwid_hcv_test.csv", stringsAsFactors = FALSE)
 
 # exposures
-exposure_vars <- c("gender", "age_4cat", "ethnic_roma_ever", "sex_work_ever_4cat", "oat_ever", "homeless_ever", "drug_type_main")
+exposure_vars <- c("gender", "age_3cat", "ethnic_roma_ever", "sex_work_ever_4cat", "oat_ever", "homeless_ever", "drug_type_main")
 
 results_list <- list()
 
@@ -384,12 +390,21 @@ for (var in binary_vars) {
 romania_pwid_hcv_test$sex_work_ever_4cat <- factor(
   romania_pwid_hcv_test$sex_work_ever_4cat,
   levels = c(
-    "No sex work - male",
-    "No sex work - female",
-    "Sex work - female",
-    "Sex work - male"
+    "Women, no sex work",
+    "Women, sex work",
+    "Men, no sex work",
+    "Men, sex work"
   )
 )
+
+romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
+  mutate(
+    age_3cat = case_when(
+      age_4cat %in% c("<30", "30-39") ~ "<40",
+      TRUE ~ age_4cat
+    ),
+    age_3cat = factor(age_3cat, levels = c("<40", "40-49", "50+"))
+  )
 
 for (var in exposure_vars) {
   levels_var <- if (is.factor(romania_pwid_hcv_test[[var]])) {
@@ -402,14 +417,19 @@ for (var in exposure_vars) {
     subset_data <- romania_pwid_hcv_test[romania_pwid_hcv_test[[var]] == lev & !is.na(romania_pwid_hcv_test[[var]]), ]
     cases <- sum(subset_data$hcv_test_rslt == 1, na.rm = TRUE)
     person_years <- sum(subset_data$py, na.rm = TRUE)
+
+    # exact Poisson IR and 95% CI
+    ir <- (cases / person_years) * 100
+    ir_lower <- (qchisq(0.025, 2 * cases) / 2) / person_years * 100
+    ir_upper <- (qchisq(0.975, 2 * (cases + 1)) / 2) / person_years * 100
     
-    # Cox model for the variable (overall, not per level)
+    # Cox model
     formula <- as.formula(paste("Surv(py, hcv_test_rslt) ~", var))
     model <- coxph(formula, data = romania_pwid_hcv_test)
     hr <- exp(coef(model))
     ci <- exp(confint(model))
     
-    # Only add HR/CI for the current level if it matches the coefficient name
+    # add HR for level
     if (paste0(var, lev) %in% names(hr)) {
       results_list[[length(results_list) + 1]] <- data.frame(
         Variable = var,
@@ -418,7 +438,10 @@ for (var in exposure_vars) {
         CI_lower = ci[paste0(var, lev), 1],
         CI_upper = ci[paste0(var, lev), 2],
         Cases = cases,
-        Person_Years = person_years
+        Person_Years = person_years,
+        IR = ir,
+        IR_CI_lower = ir_lower,
+        IR_CI_upper = ir_upper
       )
     } else {
       # For reference level (usually not shown in HR output)
@@ -429,14 +452,25 @@ for (var in exposure_vars) {
         CI_lower = NA,
         CI_upper = NA,
         Cases = cases,
-        Person_Years = person_years
+        Person_Years = person_years,
+        IR = ir,
+        IR_CI_lower = ir_lower,
+        IR_CI_upper = ir_upper
       )
     }
   }
 }
 
 results_df <- do.call(rbind, results_list)
-write_xlsx(results_df, "cox_model_results_hcv.xlsx")
+
+# formatted columns
+results_df <- results_df %>%
+  mutate(
+    hr_formatted = ifelse(is.na(HR), NA, sprintf("%.2f (%.2f-%.2f)", HR, CI_lower, CI_upper)),
+    ir_formatted = sprintf("%.1f (%.1f-%.1f)", IR, IR_CI_lower, IR_CI_upper)
+  )
+
+write_xlsx(results_df, "table6_cox_model_results_hcv.xlsx")
 
 ## longitudinal analysis with Rubin's correction
 
@@ -798,7 +832,7 @@ rr_exact$RR_95CI <- ifelse(
 results_df_two_yearly_rubin_hcv <- cbind(results_df_two_yearly_rubin_hcv, rr_exact[, -1])
 
 # save two-year interval results
-write.csv(results_df_two_yearly_rubin_hcv, "results_df_two_yearly_rubin_hcv_rr.csv", row.names = FALSE)
+write.csv(results_df_two_yearly_rubin_hcv, "table6_results_df_two_yearly_rubin_hcv_rr.csv", row.names = FALSE)
 
 # load two-year interval results
 results_df_two_yearly_rubin_hcv <- read.csv("results_df_two_yearly_rubin_hcv.csv", stringsAsFactors = FALSE)

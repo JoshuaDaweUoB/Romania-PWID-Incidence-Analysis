@@ -49,23 +49,14 @@ missing_cols <- setdiff(names(romania_pwid_raw), names(romania_pwid_treatment))
 romania_pwid_treatment[missing_cols] <- NA
 romania_pwid_raw <- bind_rows(romania_pwid_raw, romania_pwid_treatment)
 
-# save combined data
-romania_pwid_hiv_combined <- romania_pwid_raw[!is.na(romania_pwid_raw$hiv_test_rslt) | !is.na(romania_pwid_raw$oat), ]
-write.csv(romania_pwid_hiv_combined, "romania_pwid_hiv_combined.csv")
-
-# recode gender 
-romania_pwid_hiv <- romania_pwid_raw %>%
+## derive person-level covariates on the full raw data, before any test-type filtering
+covariates <- romania_pwid_raw %>%
   mutate(
     gender = case_when(
       gender == 2 ~ 0,
       TRUE ~ gender
     ),
-    gender = factor(gender, levels = c(0, 1), labels = c("Female", "Male"))
-  )
-  
-# age four categories
-romania_pwid_hiv <- romania_pwid_hiv %>%
-  mutate(
+    gender = factor(gender, levels = c(0, 1), labels = c("Female", "Male")),
     dob = as.Date(dob, format = "%d/%m/%Y"),
     age = as.numeric(difftime(Sys.Date(), dob, units = "days")) / 365.25,
     age_4cat = cut(
@@ -73,21 +64,7 @@ romania_pwid_hiv <- romania_pwid_hiv %>%
       breaks = c(-Inf, 30, 40, 50, Inf),
       labels = c("<30", "30-39", "40-49", "50+"),
       right = FALSE
-    )
-  )
-
-# one year prior to test
-romania_pwid_hiv <- romania_pwid_hiv %>%
-  mutate(
-    hiv_test_dte = if_else(!is.na(hiv_test_rslt), as.Date(appointment_dte), as.Date(NA)),
-    hiv_test_dte_12m_prev = hiv_test_dte - years(1)
-  )
-
-# main drug injected
-table(trimws(as.character(romania_pwid_hiv$drug_type)), useNA = "ifany")
-
-romania_pwid_hiv <- romania_pwid_hiv %>%
-  mutate(
+    ),
     drug_type_main = case_when(
       drug_type == "0" | is.na(drug_type) ~ "Undeclared",
       str_detect(drug_type, "\\+") | str_length(drug_type) > 1 & str_detect(drug_type, "[HLM]") ~ "Polyconsumer",
@@ -98,6 +75,52 @@ romania_pwid_hiv <- romania_pwid_hiv %>%
       drug_type == "5" | drug_type == "M" ~ "Methadone",
       TRUE ~ "Other"
     )
+  ) %>%
+  group_by(id) %>%
+  summarise(
+    gender = first(na.omit(gender)),
+    age_4cat = first(na.omit(age_4cat)),
+    drug_type_main = first(na.omit(drug_type_main)),
+    ethnic_roma_ever = as.integer(any(ethnic_roma == 1, na.rm = TRUE)),
+    oat_ever = as.integer(any(oat == 1, na.rm = TRUE)),
+    sex_work_ever = as.integer(any(sex_work_current == 1, na.rm = TRUE)),
+    homeless_ever = as.integer(any(homeless_current == 1, na.rm = TRUE)),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    ethnic_roma_ever = factor(ethnic_roma_ever, levels = c(0, 1)),
+    oat_ever = factor(oat_ever, levels = c(0, 1)),
+    sex_work_ever = factor(sex_work_ever, levels = c(0, 1)),
+    homeless_ever = factor(homeless_ever, levels = c(0, 1)),
+    sex_work_ever_4cat = factor(
+      case_when(
+        sex_work_ever == "0" & gender == "Female" ~ 0,
+        sex_work_ever == "1" & gender == "Female" ~ 1,
+        sex_work_ever == "0" & gender == "Male" ~ 2,
+        sex_work_ever == "1" & gender == "Male" ~ 3
+      ),
+      levels = c(0, 1, 2, 3),
+      labels = c("Women, no sex work", "Women, sex work", "Men, no sex work", "Men, sex work")
+    )
+  )
+
+# save combined data
+romania_pwid_hiv_combined <- romania_pwid_raw[!is.na(romania_pwid_raw$hiv_test_rslt) | !is.na(romania_pwid_raw$oat), ]
+write.csv(romania_pwid_hiv_combined, "romania_pwid_hiv_combined.csv")
+
+# attach person-level covariates (gender, age_4cat, drug_type_main, ethnic_roma_ever,
+# oat_ever, sex_work_ever, sex_work_ever_4cat, homeless_ever), computed on the full raw
+# data above so they are unaffected by which rows survive the test-type filter here.
+# drop the raw (unrecoded) gender column first so it doesn't collide with covariates$gender
+romania_pwid_hiv <- romania_pwid_hiv_combined %>%
+  dplyr::select(-gender) %>%
+  left_join(covariates, by = "id")
+
+# one year prior to test
+romania_pwid_hiv <- romania_pwid_hiv %>%
+  mutate(
+    hiv_test_dte = if_else(!is.na(hiv_test_rslt), as.Date(appointment_dte), as.Date(NA)),
+    hiv_test_dte_12m_prev = hiv_test_dte - years(1)
   )
 
 table(romania_pwid_hiv$drug_type_main, romania_pwid_hiv$drug_type, useNA = "ifany")
@@ -169,13 +192,9 @@ romania_pwid_hiv <- romania_pwid_hiv %>%
   ungroup()
 
 # lifetime exposure variables
-
-# recode roma ethnicity
-romania_pwid_hiv <- romania_pwid_hiv %>%
-  group_by(id) %>%
-  mutate(ethnic_roma_ever = ifelse(any(ethnic_roma == 1, na.rm = TRUE), 1, 0)) %>%
-  ungroup() %>%
-  mutate(ethnic_roma_ever = factor(ethnic_roma_ever, levels = c(0, 1)))
+# (ethnic_roma_ever, oat_ever, sex_work_ever, sex_work_ever_4cat, homeless_ever are
+# already attached via the covariates join above; hiv_ever still needs computing
+# here since it's specific to this script)
 
 # recode hiv ever
 romania_pwid_hiv <- romania_pwid_hiv %>%
@@ -183,27 +202,6 @@ romania_pwid_hiv <- romania_pwid_hiv %>%
   mutate(hiv_ever = ifelse(any(hiv_test_rslt == 2, na.rm = TRUE), 1, 0)) %>%
   ungroup() %>%
   mutate(hiv_ever = factor(hiv_ever, levels = c(0, 1)))
-
-# recode oat
-romania_pwid_hiv <- romania_pwid_hiv %>%
-  group_by(id) %>%
-  mutate(oat_ever = ifelse(any(oat == 1, na.rm = TRUE), 1, 0)) %>%
-  ungroup() %>%
-  mutate(oat_ever = factor(oat_ever, levels = c(0, 1)))
-
-# recode sex work
-romania_pwid_hiv <- romania_pwid_hiv %>%
-  group_by(id) %>%
-  mutate(sex_work_ever = ifelse(any(sex_work_current), 1, 0)) %>%
-  ungroup() %>%
-  mutate(sex_work_ever = factor(sex_work_ever, levels = c(0, 1)))
-
-# recode homelessness
-romania_pwid_hiv <- romania_pwid_hiv %>%
-  group_by(id) %>%
-  mutate(homeless_ever = ifelse(any(homeless_current), 1, 0)) %>%
-  ungroup() %>%
-  mutate(homeless_ever = factor(homeless_ever, levels = c(0, 1)))
 
 # make vars factors
 romania_pwid_hiv <- romania_pwid_hiv %>%
@@ -230,26 +228,6 @@ romania_pwid_hiv <- romania_pwid_hiv %>%
     sex_work_current_dte = dplyr::if_else(sex_work_current == 1, appointment_dte, as.Date(NA)),
     homeless_current_dte = dplyr::if_else(homeless_current == 1, appointment_dte, as.Date(NA))
   )
-
-# recode other values of _ever to 1 for ids with any current exposure
-romania_pwid_hiv <- romania_pwid_hiv %>%
-  group_by(id) %>%
-  mutate(
-    oat_ever = as.integer(any(oat == 1, na.rm = TRUE)),
-    sex_work_ever = as.integer(any(sex_work_current == 1, na.rm = TRUE)),
-    homeless_ever = as.integer(any(homeless_current == 1, na.rm = TRUE))
-  ) %>%
-  ungroup()
-
-# force onto all rows
-romania_pwid_hiv <- romania_pwid_hiv %>%
-  group_by(id) %>%
-  mutate(
-    oat_ever = max(oat_ever, na.rm = TRUE),
-    homeless_ever = max(homeless_ever, na.rm = TRUE),
-    sex_work_ever = max(sex_work_ever, na.rm = TRUE)
-  ) %>%
-  ungroup()
 
 # QA check
 romania_pwid_hiv %>%
@@ -314,19 +292,7 @@ first_neg_dates <- romania_pwid_hiv %>%
   group_by(id) %>%
   summarise(first_hiv_neg_test_dte = min(appointment_dte, na.rm = TRUE), .groups = "drop")
 
-# relevel sex work variable
-romania_pwid_hiv <- romania_pwid_hiv %>%
-  mutate(
-    sex_work_ever_4cat = factor(
-      case_when(
-      sex_work_ever == 0 & gender == "Female" ~ 0,
-      sex_work_ever == 1 & gender == "Female" ~ 1, 
-      sex_work_ever == 0 & gender == "Male" ~ 2,
-      sex_work_ever == 1 & gender == "Male" ~ 3
-    ),
-    levels = c(0, 1, 2, 3), 
-    labels = c("No sex work - female", "Sex work - female", "No sex work - male", "Sex work - male")
-  ))
+# sex_work_ever_4cat already attached via the covariates join above
 
 # save overall cohort
 
@@ -517,7 +483,7 @@ romania_pwid_hiv <- romania_pwid_hiv %>%
   ) %>%
   ungroup()
 
-# Filter rows to keep only those before or on the first positive test date
+# filter rows to keep only those before or on the first positive test date
 romania_pwid_hiv <- romania_pwid_hiv %>%
   filter(is.na(first_hiv_positive_dte) | appointment_dte <= first_hiv_positive_dte)
 

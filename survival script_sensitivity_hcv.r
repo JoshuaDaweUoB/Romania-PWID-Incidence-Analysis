@@ -232,10 +232,8 @@ two_yearly_results <- midpoint_dataframe %>%
     total_hcv_infections = sum(hcv_test_rslt, na.rm = TRUE),
     total_person_years = sum(time_at_risk, na.rm = TRUE),
     incidence_rate = (total_hcv_infections / total_person_years) * 100,
-    lower_bound = (total_hcv_infections / total_person_years) * 100 - 
-                  1.96 * sqrt(total_hcv_infections / (total_person_years^2)) * 100,
-    upper_bound = (total_hcv_infections / total_person_years) * 100 + 
-                  1.96 * sqrt(total_hcv_infections / (total_person_years^2)) * 100
+    lower_bound = (qchisq(0.025, 2 * total_hcv_infections) / 2) / total_person_years * 100,
+    upper_bound = (qchisq(0.975, 2 * (total_hcv_infections + 1)) / 2) / total_person_years * 100
   )
 
 # save two-yearly results
@@ -368,18 +366,16 @@ for (i in 1:length(processed_dataframes_hcv_long_s3)) {
     )
 
   # two-year intervals and totals
-  two_yearly_results <- midpoint_dataframe %>%
-    filter(!is.na(two_year_interval)) %>%
-    group_by(two_year_interval) %>%
-    summarise(
-      total_hcv_infections = sum(hcv_test_rslt, na.rm = TRUE), 
-      total_person_years = sum(time_at_risk, na.rm = TRUE),
-      incidence_rate = (total_hcv_infections / total_person_years) * 100,
-      lower_bound = (total_hcv_infections / total_person_years) * 100 - 
-                    1.96 * sqrt(total_hcv_infections / (total_person_years^2)) * 100,
-      upper_bound = (total_hcv_infections / total_person_years) * 100 + 
-                    1.96 * sqrt(total_hcv_infections / (total_person_years^2)) * 100
-    )
+    two_yearly_results <- midpoint_dataframe %>%
+      filter(!is.na(two_year_interval)) %>%
+      group_by(two_year_interval) %>%
+      summarise(
+        total_hcv_infections = sum(hcv_test_rslt, na.rm = TRUE), 
+        total_person_years = sum(time_at_risk, na.rm = TRUE),
+        incidence_rate = (total_hcv_infections / total_person_years) * 100,
+        lower_bound = (qchisq(0.025, 2 * total_hcv_infections) / 2) / total_person_years * 100,
+        upper_bound = (qchisq(0.975, 2 * (total_hcv_infections + 1)) / 2) / total_person_years * 100
+      )
   
   # save results
   all_two_yearly_results_hcv[[i]] <- two_yearly_results
