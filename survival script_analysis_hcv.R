@@ -390,10 +390,10 @@ for (var in binary_vars) {
 romania_pwid_hcv_test$sex_work_ever_4cat <- factor(
   romania_pwid_hcv_test$sex_work_ever_4cat,
   levels = c(
-    "Women, no sex work",
-    "Women, sex work",
     "Men, no sex work",
-    "Men, sex work"
+    "Men, sex work",
+    "Women, no sex work",
+    "Women, sex work"
   )
 )
 
@@ -471,6 +471,15 @@ results_df <- results_df %>%
   )
 
 write_xlsx(results_df, "table6_cox_model_results_hcv.xlsx")
+
+cases <- 29
+person_time <- 1626.2
+
+ir <- (cases / person_time) * 100
+lower <- (qchisq(0.025, 2 * cases) / 2) / person_time * 100
+upper <- (qchisq(0.975, 2 * (cases + 1)) / 2) / person_time * 100
+
+cat("IR:", round(ir, 2), "per 100 PY (95% CI:", round(lower, 2), "-", round(upper, 2), ")\n")
 
 ## longitudinal analysis with Rubin's correction
 
