@@ -137,14 +137,14 @@ hcv_summary_table <- hcv_summary_table %>%
 
 # models adjusting for gender, age and roma ethnicity
 
-adj1_vars <- c("age_4cat", "gender", "ethnic_roma_ever", "appointment_year")
+adj1_vars <- c("age_4cat", "gender", "ethnic_roma_ever")
 
 results_list <- list()
 
 for (i in adj1_vars) {
 
   model <- glm(
-    hcv_test_rslt_bin ~ age_4cat + gender + ethnic_roma_ever + appointment_year ,
+    hcv_test_rslt_bin ~ age_4cat + gender + ethnic_roma_ever,
     data = baseline_hcv,
     family = poisson(link = "log")
   )
@@ -181,14 +181,14 @@ hcv_summary_table <- hcv_summary_table %>%
 
 # model adjusting for sex, age, roma, homelessness, oat, drug type
 
-adj2_vars <- c("age_4cat", "gender", "ethnic_roma_ever", "homeless_ever", "oat_ever", "drug_type_main", "appointment_year")
+adj2_vars <- c("age_4cat", "gender", "ethnic_roma_ever", "homeless_ever", "oat_ever", "drug_type_main")
 
 results_list <- list()
 
 for (i in adj2_vars) {
 
   model <- glm(
-    hcv_test_rslt_bin ~ age_4cat + gender + ethnic_roma_ever + homeless_ever + oat_ever + drug_type_main + appointment_year,
+    hcv_test_rslt_bin ~ age_4cat + gender + ethnic_roma_ever + homeless_ever + oat_ever + drug_type_main,
     data = baseline_hcv,
     family = poisson(link = "log")
   )
@@ -225,14 +225,14 @@ hcv_summary_table <- hcv_summary_table %>%
 
 # model adjusting for age, roma, sex work, homelessness, oat, drug type
 
-adj3_vars <- c("age_4cat", "ethnic_roma_ever", "sex_work_ever_4cat", "homeless_ever", "oat_ever", "drug_type_main", "appointment_year")
+adj3_vars <- c("age_4cat", "ethnic_roma_ever", "sex_work_ever_4cat", "homeless_ever", "oat_ever", "drug_type_main")
 
 results_list <- list()
 
 for (i in adj3_vars) {
 
   model <- glm(
-    hcv_test_rslt_bin ~ age_4cat + sex_work_ever_4cat + ethnic_roma_ever + homeless_ever + oat_ever + drug_type_main + appointment_year ,
+    hcv_test_rslt_bin ~ age_4cat + sex_work_ever_4cat + ethnic_roma_ever + homeless_ever + oat_ever + drug_type_main,
     data = baseline_hcv,
     family = poisson(link = "log")
   )
@@ -406,13 +406,14 @@ romania_pwid_hcv_test <- romania_pwid_hcv_test %>%
     age_3cat = factor(age_3cat, levels = c("<40", "40-49", "50+"))
   )
 
+# unadjusted HRs and incidence rates
 for (var in exposure_vars) {
   levels_var <- if (is.factor(romania_pwid_hcv_test[[var]])) {
     levels(romania_pwid_hcv_test[[var]])
   } else {
     unique(romania_pwid_hcv_test[[var]])
   }
-  
+
   for (lev in levels_var) {
     subset_data <- romania_pwid_hcv_test[romania_pwid_hcv_test[[var]] == lev & !is.na(romania_pwid_hcv_test[[var]]), ]
     cases <- sum(subset_data$hcv_test_rslt == 1, na.rm = TRUE)
@@ -423,7 +424,7 @@ for (var in exposure_vars) {
     ir_lower <- (qchisq(0.025, 2 * cases) / 2) / person_years * 100
     ir_upper <- (qchisq(0.975, 2 * (cases + 1)) / 2) / person_years * 100
     
-    # Cox model
+    # unadjusted Cox model
     formula <- as.formula(paste("Surv(py, hcv_test_rslt) ~", var))
     model <- coxph(formula, data = romania_pwid_hcv_test)
     hr <- exp(coef(model))
@@ -444,7 +445,7 @@ for (var in exposure_vars) {
         IR_CI_upper = ir_upper
       )
     } else {
-      # For reference level (usually not shown in HR output)
+      # reference level
       results_list[[length(results_list) + 1]] <- data.frame(
         Variable = var,
         Level = lev,
@@ -466,9 +467,135 @@ results_df <- do.call(rbind, results_list)
 # formatted columns
 results_df <- results_df %>%
   mutate(
-    hr_formatted = ifelse(is.na(HR), NA, sprintf("%.2f (%.2f-%.2f)", HR, CI_lower, CI_upper)),
+    unadj_hr_formatted = ifelse(is.na(HR), NA, sprintf("%.2f (%.2f-%.2f)", HR, CI_lower, CI_upper)),
     ir_formatted = sprintf("%.1f (%.1f-%.1f)", IR, IR_CI_lower, IR_CI_upper)
   )
+
+# model adjusting for gender, age and roma ethnicity
+adj1_vars <- c("age_3cat", "gender", "ethnic_roma_ever")
+
+results_list <- list()
+
+for (i in adj1_vars) {
+
+  model <- coxph(
+    Surv(py, hcv_test_rslt) ~ age_3cat + gender + ethnic_roma_ever,
+    data = romania_pwid_hcv_test
+  )
+
+  results_list[[i]] <- broom::tidy(
+    model,
+    exponentiate = TRUE,
+    conf.int = TRUE
+  ) %>%
+    filter(term != "(Intercept)") %>%
+    filter(grepl(i, term)) %>%
+    mutate(
+      Variable = i,
+      Level = sub(paste0("^", i), "", term),
+      adj1_hr_formatted = sprintf(
+        "%.2f (%.2f-%.2f)",
+        estimate,
+        conf.low,
+        conf.high
+      )
+    ) %>%
+    dplyr::select(
+      Variable,
+      Level,
+      adj1_hr_formatted
+    )
+}
+
+model1_hr_all <- bind_rows(results_list)
+
+# merge into results table
+results_df <- results_df %>%
+  left_join(model1_hr_all, by = c("Variable", "Level"))
+
+# model adjusting for sex, age, roma, homelessness, oat, drug type
+adj2_vars <- c("age_3cat", "gender", "ethnic_roma_ever", "homeless_ever", "oat_ever", "drug_type_main")
+
+results_list <- list()
+
+for (i in adj2_vars) {
+
+  model <- coxph(
+    Surv(py, hcv_test_rslt) ~ age_3cat + gender + ethnic_roma_ever + homeless_ever + oat_ever + drug_type_main,
+    data = romania_pwid_hcv_test
+  )
+
+  results_list[[i]] <- broom::tidy(
+    model,
+    exponentiate = TRUE,
+    conf.int = TRUE
+  ) %>%
+    filter(term != "(Intercept)") %>%
+    filter(grepl(i, term)) %>%
+    mutate(
+      Variable = i,
+      Level = sub(paste0("^", i), "", term),
+      adj2_hr_formatted = sprintf(
+        "%.2f (%.2f-%.2f)",
+        estimate,
+        conf.low,
+        conf.high
+      )
+    ) %>%
+    dplyr::select(
+      Variable,
+      Level,
+      adj2_hr_formatted
+    )
+}
+
+model2_hr_all <- bind_rows(results_list)
+
+# merge into results table
+results_df <- results_df %>%
+  left_join(model2_hr_all, by = c("Variable", "Level"))
+
+# model adjusting for age, roma, sex work, homelessness, oat, drug type
+adj3_vars <- c("age_3cat", "ethnic_roma_ever", "sex_work_ever_4cat", "homeless_ever", "oat_ever", "drug_type_main")
+
+results_list <- list()
+
+for (i in adj3_vars) {
+
+  model <- coxph(
+    Surv(py, hcv_test_rslt) ~ age_3cat + sex_work_ever_4cat + ethnic_roma_ever + homeless_ever + oat_ever + drug_type_main,
+    data = romania_pwid_hcv_test
+  )
+
+  results_list[[i]] <- broom::tidy(
+    model,
+    exponentiate = TRUE,
+    conf.int = TRUE
+  ) %>%
+    filter(term != "(Intercept)") %>%
+    filter(grepl(i, term)) %>%
+    mutate(
+      Variable = i,
+      Level = sub(paste0("^", i), "", term),
+      adj3_hr_formatted = sprintf(
+        "%.2f (%.2f-%.2f)",
+        estimate,
+        conf.low,
+        conf.high
+      )
+    ) %>%
+    dplyr::select(
+      Variable,
+      Level,
+      adj3_hr_formatted
+    )
+}
+
+model3_hr_all <- bind_rows(results_list)
+
+# merge into results table
+results_df <- results_df %>%
+  left_join(model3_hr_all, by = c("Variable", "Level"))
 
 write_xlsx(results_df, "table6_cox_model_results_hcv.xlsx")
 
