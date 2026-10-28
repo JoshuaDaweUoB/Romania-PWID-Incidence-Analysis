@@ -541,3 +541,5 @@ colnames(table3) <- c(
 table3 <- table3 %>% dplyr::select(-`No infection PR (95% CI)`)
 
 write.csv(table3, "table3_coinfection.csv", row.names = FALSE)
+
+# trends in coinfection over study period
