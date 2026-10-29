@@ -58,7 +58,7 @@ covariates <- romania_pwid_raw %>%
     ),
     gender = factor(gender, levels = c(0, 1), labels = c("Female", "Male")),
     dob = as.Date(dob, format = "%d/%m/%Y"),
-    age = as.numeric(difftime(Sys.Date(), dob, units = "days")) / 365.25,
+    age = as.numeric(difftime(as.Date(appointment_dte), dob, units = "days")) / 365.25,
     age_4cat = cut(
       age,
       breaks = c(-Inf, 30, 40, 50, Inf),
@@ -79,7 +79,7 @@ covariates <- romania_pwid_raw %>%
   group_by(id) %>%
   summarise(
     gender = first(na.omit(gender)),
-    age_4cat = first(na.omit(age_4cat)),
+    age_4cat = first(na.omit(age_4cat[order(appointment_dte)])),  # age at first visit
     drug_type_main = first(na.omit(drug_type_main)),
     ethnic_roma_ever = as.integer(any(ethnic_roma == 1, na.rm = TRUE)),
     oat_ever = as.integer(any(oat == 1, na.rm = TRUE)),

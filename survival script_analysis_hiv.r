@@ -717,9 +717,9 @@ final_summed_df_hiv <- final_summed_df_hiv %>%
   )
 
 # calculate mean, 2.5th percentile, and 97.5th percentile for the overall incidence rate
-mean_incidence_rate <- mean(final_summed_df_hiv$overall_incidence_rate, na.rm = TRUE)
-lower_bound_overall <- quantile(final_summed_df_hiv$overall_incidence_rate, 0.025, na.rm = TRUE)
-upper_bound_overall <- quantile(final_summed_df_hiv$overall_incidence_rate, 0.975, na.rm = TRUE)
+mean_incidence_rate_hiv <- mean(final_summed_df_hiv$overall_incidence_rate, na.rm = TRUE)
+lower_bound_overall_hiv <- quantile(final_summed_df_hiv$overall_incidence_rate, 0.025, na.rm = TRUE)
+upper_bound_overall_hiv <- quantile(final_summed_df_hiv$overall_incidence_rate, 0.975, na.rm = TRUE)
 
 # calculate the mean incidence rates for each year from 2013 to 2022
 yearly_means_hiv <- sapply(2013:2022, function(year) {

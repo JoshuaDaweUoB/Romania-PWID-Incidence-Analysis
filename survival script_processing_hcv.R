@@ -58,7 +58,7 @@ covariates <- romania_pwid_raw %>%
     ),
     gender = factor(gender, levels = c(0, 1), labels = c("Female", "Male")),
     dob = as.Date(dob, format = "%d/%m/%Y"),
-    age = as.numeric(difftime(Sys.Date(), dob, units = "days")) / 365.25,
+    age = as.numeric(difftime(as.Date(appointment_dte), dob, units = "days")) / 365.25,
     age_4cat = cut(
       age,
       breaks = c(-Inf, 30, 40, 50, Inf),
@@ -79,7 +79,7 @@ covariates <- romania_pwid_raw %>%
   group_by(id) %>%
   summarise(
     gender = first(na.omit(gender)),
-    age_4cat = first(na.omit(age_4cat)),
+    age_4cat = first(na.omit(age_4cat[order(appointment_dte)])),  # age at first visit
     drug_type_main = first(na.omit(drug_type_main)),
     ethnic_roma_ever = as.integer(any(ethnic_roma == 1, na.rm = TRUE)),
     oat_ever = as.integer(any(oat == 1, na.rm = TRUE)),
@@ -108,10 +108,7 @@ covariates <- romania_pwid_raw %>%
 romania_pwid_hcv_combined <- romania_pwid_raw[!is.na(romania_pwid_raw$hcv_test_rslt) | !is.na(romania_pwid_raw$oat), ]
 write.csv(romania_pwid_hcv_combined, "romania_pwid_hcv_combined.csv")
 
-# attach person-level covariates (gender, age_4cat, drug_type_main, ethnic_roma_ever,
-# oat_ever, sex_work_ever, sex_work_ever_4cat, homeless_ever), computed on the full raw
-# data above so they are unaffected by which rows survive the test-type filter here.
-# drop the raw (unrecoded) gender column first so it doesn't collide with covariates$gender
+# attach person-level covariates
 romania_pwid_hcv <- romania_pwid_hcv_combined %>%
   dplyr::select(-gender) %>%
   left_join(covariates, by = "id")
@@ -192,9 +189,6 @@ romania_pwid_hcv <- romania_pwid_hcv %>%
   ungroup()
 
 # lifetime exposure variables
-# (ethnic_roma_ever, oat_ever, sex_work_ever, sex_work_ever_4cat, homeless_ever are
-# already attached via the covariates join above; hcv_ever still needs computing
-# here since it's specific to this script)
 
 # recode hcv ever
 romania_pwid_hcv <- romania_pwid_hcv %>%
@@ -296,16 +290,16 @@ first_neg_dates <- romania_pwid_hcv %>%
 
 # save overall cohort
 
-# id sequence
-overall_data <- romania_pwid_hcv %>%
-  group_by(id) %>%
-  arrange(id, appointment_dte) %>%
-  mutate(id_seq = row_number()) %>%
-  ungroup()
-
-# restrict to one row per id
-overall_data <- overall_data %>%
-  filter(id_seq == 1)
+# keep ids with any harm-reduction use
+overall_data <- romania_pwid_raw %>%
+  filter(
+    !is.na(syringes_distributed_1ml) |
+      !is.na(syringes_distributed_2ml) |
+      !is.na(hcv_test_rslt) |
+      !is.na(hiv_test_rslt)
+  ) %>%
+  distinct(id) %>%
+  left_join(covariates, by = "id")
 
 # table of exposures
 ever_vars <- c("gender", "age_4cat", "ethnic_roma_ever", "oat_ever", "sex_work_ever_4cat", "homeless_ever", "drug_type_main")
@@ -648,21 +642,9 @@ romania_pwid_hcv_test_iterations <- romania_pwid_hcv_test_iterations %>%
     person_years = days_risk / 365.25
   )
 
-# only one negative interval per id
-romania_pwid_hcv_test_negatives <- romania_pwid_hcv_test %>%
-  filter(hcv_test_rslt == 0) %>%
-  tidyr::crossing(iteration = 1:10000) %>%
-  mutate(
-    imputed_infection_dte = NA,
-    days_risk = as.numeric(days_risk),
-    person_years = days_risk / 365.25,
-    midpoint_year = NA
-  )
-
-split_dataframes <- split(
-  bind_rows(romania_pwid_hcv_test_iterations, romania_pwid_hcv_test_negatives),
-  bind_rows(romania_pwid_hcv_test_iterations, romania_pwid_hcv_test_negatives)$iteration
-)
+combined_iterations <- bind_rows(romania_pwid_hcv_test_iterations, romania_pwid_hcv_test_negatives)
+split_dataframes <- split(combined_iterations, combined_iterations$iteration)
+rm(combined_iterations)
 
 # name each dataframe in the list
 names(split_dataframes) <- paste0("iteration_", seq_along(split_dataframes))
@@ -699,27 +681,14 @@ for (i in 1:10000) {
   # dataframe for the current iteration
   df <- split_dataframes[[i]]
   
-  # person-years for each year of observation
-  person_years_df <- df %>%
-    rowwise() %>%
-    mutate(
-      start_year = year(appointment_dte),
-      end_year = year(appointment_dte_lag),
-      start_date = appointment_dte,
-      end_date = appointment_dte_lag
-    ) %>%
-    do({
-      data <- .
-      years <- seq(data$start_year, data$end_year)
-      person_years <- sapply(years, function(year) {
-        start <- max(as.Date(paste0(year, "-01-01")), data$start_date)
-        end <- min(as.Date(paste0(year, "-12-31")), data$end_date)
-        as.numeric(difftime(end, start, units = "days")) / 365.25
-      })
-      names(person_years) <- years
-      data.frame(t(person_years))
-    }) %>%
-    ungroup()
+  # person-years for each year of observation (vectorised; NA for years outside the interval)
+  person_years_df <- as.data.frame(sapply(required_years, function(y) {
+    start <- pmax(as.Date(paste0(y, "-01-01")), df$appointment_dte)
+    end <- pmin(as.Date(paste0(y, "-12-31")), df$appointment_dte_lag)
+    in_range <- year(df$appointment_dte) <= y & year(df$appointment_dte_lag) >= y
+    ifelse(in_range, as.numeric(difftime(end, start, units = "days")) / 365.25, NA)
+  }))
+  names(person_years_df) <- paste0("X", required_years)
   
   # check person_years_df is empty
   if (nrow(person_years_df) == 0) {
